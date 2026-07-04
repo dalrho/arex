@@ -22,8 +22,6 @@ We will employ a unified Monorepo layout structure:
 ### Rationale
 * **Synchronized Changes**: Changes to API specifications (like `shared/openapi/sentinel-os.yaml`) can be refactored on both client and server in a single pull request, reducing integration delays.
 * **Streamlined Dev Setup**: A single `docker-compose.yml` and `Makefile` orchestrates the local stack.
-* **Unified CI/CD**: A single GitHub Actions workflow validates code styling and build status across both services on every commit.
 
 ### Consequences
-* Requires careful path-filtering rules in CI pipelines to prevent building unaffected services.
 * Large codebase footprint, mitigated by maintaining clear subproject boundaries (`/backend` vs `/frontend`).
