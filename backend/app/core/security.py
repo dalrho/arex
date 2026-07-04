@@ -1,8 +1,9 @@
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional, Union
+
+import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-import jwt
 from jwt.exceptions import InvalidTokenError
 from pydantic import BaseModel
 
