@@ -25,15 +25,37 @@ This ticket represents the implementation work for the user story in **EPIC 6 â€
 - [ ] Implement side-by-side UI `RedlineDiffViewer.tsx` and `CitationTooltip.tsx`
 - [ ] Add server-side validation to enforce presence of citations in drafts
 
-## Affected Files
-- [remediation_agent.py](file:///d:/yciad/Documents/AMD%20HACKATHON/arex/backend/app/ai/agents/remediation_agent.py)
-- [remediation.md](file:///d:/yciad/Documents/AMD%20HACKATHON/arex/backend/app/ai/prompts/remediation.md)
-- [kb_search_tool.py](file:///d:/yciad/Documents/AMD%20HACKATHON/arex/backend/app/ai/tools/kb_search_tool.py)
-- [citation_tool.py](file:///d:/yciad/Documents/AMD%20HACKATHON/arex/backend/app/ai/tools/citation_tool.py)
-- [remediation_draft.py](file:///d:/yciad/Documents/AMD%20HACKATHON/arex/backend/app/models/remediation_draft.py)
-- [remediation.py](file:///d:/yciad/Documents/AMD%20HACKATHON/arex/backend/app/api/v1/endpoints/remediation.py)
-- [RedlineDiffViewer.tsx](file:///d:/yciad/Documents/AMD%20HACKATHON/arex/frontend/src/components/remediation/RedlineDiffViewer.tsx)
-- [CitationTooltip.tsx](file:///d:/yciad/Documents/AMD%20HACKATHON/arex/frontend/src/components/remediation/CitationTooltip.tsx)
+
+## Collaborative Roles
+*   **AI Developer (Lead):** Write `remediation_agent.py`. Build `kb_search_tool.py` to retrieve raw document sections from Postgres/Qdrant. Write prompts in `remediation.md` that enforce formatting of citations.
+*   **Backend Developer:** Create the `remediation_drafts` table. Build `POST /v1/remediation/{regulation_id}` and query routes.
+*   **Frontend Developer:** Build `RedlineDiffViewer.tsx` to display inline text comparison highlighting additions and deletions.
+
+## Integration Contract
+*   **Postgres Model (`RemediationDraft`):**
+    ```python
+    id: UUID (Primary Key)
+    document_id: UUID (Foreign Key)
+    regulation_id: UUID (Foreign Key)
+    original_text: str
+    suggested_text: str
+    citations: List[str]  # e.g., ["Part 11.10(b)", "Part 11.50"]
+    rationale: str
+    status: str  # Enum: "pending_review" | "approved" | "rejected"
+    ```
+
+## Junior Developer Tips & Pitfalls
+1.  **AI Output Security Separation:** Never write proposed agent draft revisions directly back into the master `documents` table. Store revisions in the distinct `remediation_drafts` table. This creates a secure boundary protecting canonical company documents from LLM hallucinations until a human reviewer signs off.
+2.  **Citation Enforcement:** Validate the structured response returned by the agent. If the citation list is empty or fails to map directly to a regulation section, reject the draft internally and throw a warning or execute a self-correcting prompt retry.
+\n## Affected Files
+- [backend/app/ai/agents/remediation_agent.py](backend/app/ai/agents/remediation_agent.py)
+- [backend/app/ai/prompts/remediation.md](backend/app/ai/prompts/remediation.md)
+- [backend/app/ai/tools/kb_search_tool.py](backend/app/ai/tools/kb_search_tool.py)
+- [backend/app/ai/tools/citation_tool.py](backend/app/ai/tools/citation_tool.py)
+- [backend/app/models/remediation_draft.py](backend/app/models/remediation_draft.py)
+- [backend/app/api/v1/endpoints/remediation.py](backend/app/api/v1/endpoints/remediation.py)
+- [frontend/src/components/remediation/RedlineDiffViewer.tsx](frontend/src/components/remediation/RedlineDiffViewer.tsx)
+- [frontend/src/components/remediation/CitationTooltip.tsx](frontend/src/components/remediation/CitationTooltip.tsx)
 
 ## Dependencies
 - EPIC-01-STORY-1.1 (Document Store/RAG Setup)

@@ -22,14 +22,33 @@ This ticket represents the implementation work for the user story in **EPIC 10 â
 - [ ] Build Login & Registration flows in frontend app router
 - [ ] Add mock/verification test scripts targeting cross-tenant data requests
 
-## Affected Files
-- [security.py](file:///d:/yciad/Documents/AMD%20HACKATHON/arex/backend/app/core/security.py)
-- [user.py](file:///d:/yciad/Documents/AMD%20HACKATHON/arex/backend/app/models/user.py)
-- [organization.py](file:///d:/yciad/Documents/AMD%20HACKATHON/arex/backend/app/models/organization.py)
-- [auth.py](file:///d:/yciad/Documents/AMD%20HACKATHON/arex/backend/app/api/v1/endpoints/auth.py)
-- [logging.py](file:///d:/yciad/Documents/AMD%20HACKATHON/arex/backend/app/core/logging.py)
-- [page.tsx](file:///d:/yciad/Documents/AMD%20HACKATHON/arex/frontend/src/app/(auth)/login/page.tsx)
-- [page.tsx](file:///d:/yciad/Documents/AMD%20HACKATHON/arex/frontend/src/app/(auth)/register/page.tsx)
+
+## Collaborative Roles
+*   **Backend Developer (Lead):** Build auth endpoints, JWT encryption, password hashing, and DB dependency guards.
+*   **Frontend Developer:** Build responsive registration and login layout pages.
+
+## Integration Contract
+*   **JWT Payload Claims:**
+    ```json
+    {
+      "sub": "user_id_uuid",
+      "org_id": "organization_id_uuid",
+      "role": "QA Manager",  // Enum: "QA Manager", "Validation Engineer", "Administrator"
+      "exp": 1780000000
+    }
+    ```
+
+## Junior Developer Tips & Pitfalls
+1.  **Multi-Tenant Guarding (Crucial):** Never filter records using an `organization_id` sent in the request body or query parameter by the client. The client can manipulate this. Always extract the `organization_id` from the secure, cryptographically-signed JWT payload context on the backend server, and append it as a strict filter to all Postgres and Qdrant database queries.
+2.  **Secure Password Storage:** Use `bcrypt` to hash user credentials during registration. Never write raw plaintext passwords to standard debug logs.
+\n## Affected Files
+- [backend/app/core/security.py](backend/app/core/security.py)
+- [backend/app/models/user.py](backend/app/models/user.py)
+- [backend/app/models/organization.py](backend/app/models/organization.py)
+- [backend/app/api/v1/endpoints/auth.py](backend/app/api/v1/endpoints/auth.py)
+- [backend/app/core/logging.py](backend/app/core/logging.py)
+- [frontend/src/app/(auth](frontend/src/app/(auth)/login/page.tsx)
+- [frontend/src/app/(auth](frontend/src/app/(auth)/register/page.tsx)
 
 ## Dependencies
 - EPIC-11-STORY-11.1 (Base Project Scaffolding)

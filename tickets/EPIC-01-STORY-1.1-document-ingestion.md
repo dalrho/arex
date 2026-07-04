@@ -15,28 +15,63 @@ This ticket represents the implementation work for the user story in **EPIC 1 â€
 - [ ] Document list and detail UI with version badge.
 - [ ] Integration test verifies upload -> parse -> embed -> retrieve workflow.
 - [ ] Per-org data isolation and file type filtering/malware scan hooks verified.
+- [ ] Raw PDF/document storage configured (using a shared Docker volume under `/app/storage` or database storage) to support UI redlining and exporting.
 
 ## Technical Tasks
 - [ ] Define API contract in `shared/openapi/sentinel-os.yaml` for documents endpoints
 - [ ] Implement `backend/app/services/regulation_parser/pdf_parser.py`
 - [ ] Implement chunking strategy & embedding service in `backend/app/services/embeddings/embedding_service.py`
 - [ ] Implement `backend/app/services/vector_db/qdrant_client.py` for document indexing
-- [ ] Implement DB models and schemas for documents (`backend/app/models/document.py`, `backend/app/api/v1/schemas/document.py`)
+- [ ] Implement DB models and schemas for documents (`backend/app/models/document.py`, `backend/app/api/v1/schemas/document.py`), including defining raw file storage paths and file system persistence
 - [ ] Implement backend API endpoints in `backend/app/api/v1/endpoints/documents.py`
 - [ ] Build `DocumentUploader.tsx` in frontend components
 - [ ] Build document pages in `frontend/src/app/(dashboard)/documents/`
 - [ ] Write unit and integration tests for document ingestion
 
-## Affected Files
-- [sentinel-os.yaml](file:///d:/yciad/Documents/AMD%20HACKATHON/arex/shared/openapi/sentinel-os.yaml)
-- [pdf_parser.py](file:///d:/yciad/Documents/AMD%20HACKATHON/arex/backend/app/services/regulation_parser/pdf_parser.py)
-- [embedding_service.py](file:///d:/yciad/Documents/AMD%20HACKATHON/arex/backend/app/services/embeddings/embedding_service.py)
-- [qdrant_client.py](file:///d:/yciad/Documents/AMD%20HACKATHON/arex/backend/app/services/vector_db/qdrant_client.py)
-- [document.py](file:///d:/yciad/Documents/AMD%20HACKATHON/arex/backend/app/models/document.py)
-- [document.py](file:///d:/yciad/Documents/AMD%20HACKATHON/arex/backend/app/api/v1/schemas/document.py)
-- [documents.py](file:///d:/yciad/Documents/AMD%20HACKATHON/arex/backend/app/api/v1/endpoints/documents.py)
-- [DocumentUploader.tsx](file:///d:/yciad/Documents/AMD%20HACKATHON/arex/frontend/src/components/documents/DocumentUploader.tsx)
-- [page.tsx](file:///d:/yciad/Documents/AMD%20HACKATHON/arex/frontend/src/app/(dashboard)/documents/page.tsx)
+
+## Collaborative Roles
+*   **Backend Developer (Lead):** Design the database schema for the `documents` table. Build `POST /v1/documents` and `GET /v1/documents/{id}`. Implement local file persistence to a shared directory `/app/storage` mapped to a Docker volume.
+*   **AI/Data Engineer:** Build the PDF parsing parser (`pdf_parser.py`) and chunking logic. Integrate the embedding service to convert chunks to vectors using the `BGE-large` model and index them into Qdrant.
+*   **Frontend Developer:** Build the `DocumentUploader.tsx` component with drag-and-drop support, upload progress animation, and client-side MIME-type checks (PDF only).
+
+## Integration Contract
+*   **Postgres Model (`Document`):**
+    ```python
+    id: UUID (Primary Key)
+    organization_id: UUID (Foreign Key)
+    filename: str
+    file_path: str  # Path to local raw PDF, e.g., /app/storage/UUID.pdf
+    parsed_text: str  # Stored text representation for fallback searches
+    version: int (default=1)
+    created_at: datetime
+    ```
+*   **Qdrant Payload Schema:**
+    ```json
+    {
+      "vector": [1024 floats],
+      "payload": {
+        "document_id": "UUID",
+        "organization_id": "UUID",
+        "chunk_index": 0,
+        "text": "Extracted chunk content..."
+      }
+    }
+    ```
+
+## Junior Developer Tips & Pitfalls
+1.  **File Name Safety:** Never trust user-provided filenames directly. They can contain directory traversal attacks (e.g. `../../etc/passwd`). Generate a unique UUID for the filename on disk and store the original filename in the database metadata.
+2.  **Scanned PDFs:** Simple text extraction fails on scanned PDFs. Check if extracted text length is less than 50 characters, and log a warning or return a notification to the user suggesting OCR ingestion.
+3.  **FastAPI Upload Limit:** Limit uploads to 10MB using middleware or route checks to prevent server denial-of-service.
+\n## Affected Files
+- [shared/openapi/sentinel-os.yaml](shared/openapi/sentinel-os.yaml)
+- [backend/app/services/regulation_parser/pdf_parser.py](backend/app/services/regulation_parser/pdf_parser.py)
+- [backend/app/services/embeddings/embedding_service.py](backend/app/services/embeddings/embedding_service.py)
+- [backend/app/services/vector_db/qdrant_client.py](backend/app/services/vector_db/qdrant_client.py)
+- [backend/app/models/document.py](backend/app/models/document.py)
+- [backend/app/api/v1/schemas/document.py](backend/app/api/v1/schemas/document.py)
+- [backend/app/api/v1/endpoints/documents.py](backend/app/api/v1/endpoints/documents.py)
+- [frontend/src/components/documents/DocumentUploader.tsx](frontend/src/components/documents/DocumentUploader.tsx)
+- [frontend/src/app/(dashboard](frontend/src/app/(dashboard)/documents/page.tsx)
 
 ## Dependencies
 - EPIC-11-STORY-11.1 (DevOps & Environment setup)

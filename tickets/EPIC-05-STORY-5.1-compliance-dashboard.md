@@ -20,11 +20,44 @@ This ticket represents the implementation work for the user story in **EPIC 5 â€
 - [ ] Add filters and sorting to the regulatory feed view
 - [ ] Conduct accessibility review and fix ARIA labels/keyboard focus
 
-## Affected Files
-- [dashboard.py](file:///d:/yciad/Documents/AMD%20HACKATHON/arex/backend/app/api/v1/endpoints/dashboard.py)
-- [layout.tsx](file:///d:/yciad/Documents/AMD%20HACKATHON/arex/frontend/src/app/(dashboard)/layout.tsx)
-- [page.tsx](file:///d:/yciad/Documents/AMD%20HACKATHON/arex/frontend/src/app/(dashboard)/page.tsx)
-- [page.tsx](file:///d:/yciad/Documents/AMD%20HACKATHON/arex/frontend/src/app/(dashboard)/regulations/page.tsx)
+
+## Collaborative Roles
+*   **Frontend Developer (Lead):** Design responsive CSS grid layout. Build filters, search bars, navigation tabs, loading indicators, and error boundaries.
+*   **Backend Developer:** Build the aggregation endpoint `GET /v1/dashboard` compiling stats from multiple database models in a single payload.
+
+## Integration Contract
+*   **Dashboard Response Schema (`GET /v1/dashboard`):**
+    ```json
+    {
+      "statistics": {
+        "active_sops": 24,
+        "tracked_updates": 12,
+        "pending_approvals": 3
+      },
+      "recent_updates": [
+        {
+          "id": "UUID",
+          "title": "Title",
+          "category": "records",
+          "urgency": "high",
+          "date": "2026-07-02T22:00:00Z"
+        }
+      ],
+      "system_status": {
+        "db_connected": true,
+        "last_polled": "2026-07-04T15:00:00Z"
+      }
+    }
+    ```
+
+## Junior Developer Tips & Pitfalls
+1.  **Avoid API Over-fetching:** Instead of requesting 5 different endpoints when loading the dashboard page, compile stats into a single `/v1/dashboard` endpoint to speed up rendering and reduce server round-trips.
+2.  **React Suspense & Loading States:** Use skeletons/spinners when fetching dashboard metrics. Never let the dashboard screen render blank or crash on network delay.
+\n## Affected Files
+- [backend/app/api/v1/endpoints/dashboard.py](backend/app/api/v1/endpoints/dashboard.py)
+- [frontend/src/app/(dashboard](frontend/src/app/(dashboard)/layout.tsx)
+- [frontend/src/app/(dashboard](frontend/src/app/(dashboard)/page.tsx)
+- [frontend/src/app/(dashboard](frontend/src/app/(dashboard)/regulations/page.tsx)
 
 ## Dependencies
 - EPIC-04-STORY-4.1 (Impact Data Availability)
