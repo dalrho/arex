@@ -1,0 +1,35 @@
+version: "3.8"
+
+services:
+  # Expose Postgres port for easy connection from database management tools on the host
+  postgres:
+    ports:
+      - "5432:5432"
+
+  # Expose Qdrant API port to interact with vector database directly from local tools
+  qdrant:
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+
+  # Backend local dev overrides: hot reload mounting and debug flags
+  backend:
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    environment:
+      - DEV_MODE=true
+      - LOG_LEVEL=debug
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # Frontend local dev overrides: port exposure and Next.js hot reload volumes
+  frontend:
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NODE_ENV=development

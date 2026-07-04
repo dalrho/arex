@@ -1,0 +1,71 @@
+version: "3.8"
+
+services:
+  # postgres: Relational database to store metadata, users, organizations, approval records, and tasks
+  postgres:
+    image: postgres:16-alpine
+    container_name: sentinel-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - sentinel-network
+    restart: unless-stopped
+
+  # qdrant: Vector database for semantic document chunk storage and fast RAG lookups
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: sentinel-qdrant
+    expose:
+      - "6333"
+      - "6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - sentinel-network
+    restart: unless-stopped
+
+  # backend: FastAPI web server containing deterministic compliance validation & LangGraph AI agents
+  backend:
+    build:
+      context: .
+      dockerfile: infra/docker/backend.Dockerfile
+    container_name: sentinel-backend
+    expose:
+      - "8000"
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - QDRANT_URL=http://qdrant:6333
+    depends_on:
+      - postgres
+      - qdrant
+    networks:
+      - sentinel-network
+    restart: unless-stopped
+
+  # frontend: Next.js client-facing web application for managing SOPs, regulations, drafts, and compliance status
+  frontend:
+    build:
+      context: .
+      dockerfile: infra/docker/frontend.Dockerfile
+    container_name: sentinel-frontend
+    expose:
+      - "3000"
+    depends_on:
+      - backend
+    networks:
+      - sentinel-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+  qdrant_data:
+    driver: local
+
+networks:
+  sentinel-network:
+    driver: bridge

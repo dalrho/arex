@@ -1,0 +1,12 @@
+openapi: 3.0.3
+info:
+  title: Sentinel OS API
+  description: API for Sentinel OS FDA 21 CFR Part 11 Regulatory Intelligence Platform
+  version: 1.0.0
+paths:
+  /v1/health:
+    get:
+      summary: Health Check
+      responses:
+        "200":
+          description: OK

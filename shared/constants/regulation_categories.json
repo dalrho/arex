@@ -1,0 +1,5 @@
+[
+  {"id": "electronic_records", "name": "Electronic Records (Subpart B)", "clause": "11.10 - 11.30"},
+  {"id": "electronic_signatures", "name": "Electronic Signatures (Subpart C)", "clause": "11.50 - 11.70"},
+  {"id": "signature_manifestations", "name": "Signature Manifestations", "clause": "11.100 - 11.300"}
+]
