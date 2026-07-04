@@ -22,7 +22,9 @@ def get_db() -> Generator[Session, None, None]:
         db.close()
 
 
-def get_tenant_id(x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")) -> str:
+def get_tenant_id(
+    x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")
+) -> str:
     """
     Dependency to enforce multi-tenant/organization isolation.
     Extracts the tenant organization ID from custom X-Tenant-ID header.
@@ -31,4 +33,3 @@ def get_tenant_id(x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-ID")
     if not x_tenant_id:
         return "default-org-id"
     return x_tenant_id
-

@@ -37,9 +37,4 @@ async def health_check():
     """
     Simple health check endpoint to verify backend service viability.
     """
-    return {
-        "status": "healthy",
-        "service": "sentinel-os-backend",
-        "version": "1.0.0"
-    }
-
+    return {"status": "healthy", "service": "sentinel-os-backend", "version": "1.0.0"}

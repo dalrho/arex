@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     Application Settings defined using Pydantic Settings.
     Environment variables are automatically mapped and typed.
     """
+
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", extra="ignore"
     )
@@ -15,7 +16,7 @@ class Settings(BaseSettings):
     # General configuration
     PROJECT_NAME: str = "Sentinel OS"
     API_V1_STR: str = "/api/v1"
-    
+
     # CORS Origins - parsed as list or comma-separated string
     CORS_ORIGINS: Union[List[str], str] = []
 
@@ -49,4 +50,3 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-
