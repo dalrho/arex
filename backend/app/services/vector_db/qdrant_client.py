@@ -1,4 +1,125 @@
-"""
-Sentinel OS - qdrant_client.py
-This is a placeholder file for the Sentinel OS backend service.
-"""
+import logging
+import uuid
+from qdrant_client import QdrantClient as RealQdrantClient
+from qdrant_client.http import models as qdrant_models
+from app.core.config import settings
+
+logger = logging.getLogger("sentinel-os.vector-db")
+
+class VectorDBClient:
+    def __init__(self):
+        # We try to use the configured URL. 
+        # Fallback to localhost if connecting from host context in scripts.
+        self.url = settings.QDRANT_URL
+        self.client = RealQdrantClient(url=self.url)
+        self.collection_name = "sentinel_docs"
+
+    def init_collection(self) -> None:
+        """
+        Ensures the vector collection exists in Qdrant.
+        """
+        try:
+            collections = self.client.get_collections()
+            exist = any(c.name == self.collection_name for c in collections.collections)
+            if not exist:
+                logger.info(f"Creating Qdrant collection: {self.collection_name}")
+                self.client.create_collection(
+                    collection_name=self.collection_name,
+                    vectors_config=qdrant_models.VectorParams(
+                        size=1024,  # BGE-large embedding size
+                        distance=qdrant_models.Distance.COSINE
+                    )
+                )
+            else:
+                logger.info(f"Qdrant collection '{self.collection_name}' already exists.")
+        except Exception as e:
+            logger.error(f"Failed to initialize Qdrant collection: {e}")
+            raise e
+
+    def upsert_chunks(self, document_id: uuid.UUID, organization_id: uuid.UUID, chunks: list[dict]) -> None:
+        """
+        Upserts document chunks into Qdrant.
+        chunks: list of dicts: [{"text": str, "vector": list[float], "chunk_index": int}]
+        """
+        try:
+            points = []
+            for chunk in chunks:
+                point_id = str(uuid.uuid4())
+                points.append(
+                    qdrant_models.PointStruct(
+                        id=point_id,
+                        vector=chunk["vector"],
+                        payload={
+                            "document_id": str(document_id),
+                            "organization_id": str(organization_id),
+                            "chunk_index": chunk["chunk_index"],
+                            "text": chunk["text"]
+                        }
+                    )
+                )
+            self.client.upsert(collection_name=self.collection_name, points=points)
+            logger.info(f"Successfully upserted {len(chunks)} chunks for document {document_id}")
+        except Exception as e:
+            logger.error(f"Failed to upsert chunks to Qdrant: {e}")
+            raise e
+
+    def search_chunks(self, query_vector: list[float], organization_id: uuid.UUID, limit: int = 5) -> list[dict]:
+        """
+        Searches for semantically similar chunks belonging to the given organization.
+        """
+        try:
+            # Enforce organization isolation using payload filtering
+            query_filter = qdrant_models.Filter(
+                must=[
+                    qdrant_models.FieldCondition(
+                        key="organization_id",
+                        match=qdrant_models.MatchValue(value=str(organization_id))
+                    )
+                ]
+            )
+
+            results = self.client.search(
+                collection_name=self.collection_name,
+                query_vector=query_vector,
+                query_filter=query_filter,
+                limit=limit
+            )
+
+            return [
+                {
+                    "document_id": r.payload["document_id"],
+                    "organization_id": r.payload["organization_id"],
+                    "chunk_index": r.payload["chunk_index"],
+                    "text": r.payload["text"],
+                    "score": r.score
+                }
+                for r in results
+            ]
+        except Exception as e:
+            logger.error(f"Failed to search Qdrant chunks: {e}")
+            return []
+
+    def delete_document_chunks(self, document_id: uuid.UUID) -> None:
+        """
+        Deletes all vector points associated with a specific document.
+        """
+        try:
+            self.client.delete(
+                collection_name=self.collection_name,
+                points_selector=qdrant_models.FilterSelector(
+                    filter=qdrant_models.Filter(
+                        must=[
+                            qdrant_models.FieldCondition(
+                                key="document_id",
+                                match=qdrant_models.MatchValue(value=str(document_id))
+                            )
+                        ]
+                    )
+                )
+            )
+            logger.info(f"Deleted chunks for document {document_id} from Qdrant.")
+        except Exception as e:
+            logger.error(f"Failed to delete document chunks from Qdrant: {e}")
+            raise e
+
+vector_db_client = VectorDBClient()
