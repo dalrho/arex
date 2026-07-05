@@ -78,9 +78,9 @@ class VectorDBClient:
                 ]
             )
 
-            results = self.client.search(
+            response = self.client.query_points(
                 collection_name=self.collection_name,
-                query_vector=query_vector,
+                query=query_vector,
                 query_filter=query_filter,
                 limit=limit
             )
@@ -93,7 +93,7 @@ class VectorDBClient:
                     "text": r.payload["text"],
                     "score": r.score
                 }
-                for r in results
+                for r in response.points
             ]
         except Exception as e:
             logger.error(f"Failed to search Qdrant chunks: {e}")
