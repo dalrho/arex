@@ -1,0 +1,16 @@
+
+STANDARD OPERATING PROCEDURE: SOP-101
+TITLE: ELECTRONIC RECORDS AND SYSTEM ACCESS CONTROL
+VERSION: 1
+
+1.0 PURPOSE
+This procedure establishes the administrative, technical, and physical controls to ensure system security, access control, and electronic record integrity under FDA 21 CFR Part 11.
+
+2.0 SCOPE
+This SOP applies to all computer systems, network domains, and software tools that generate, maintain, modify, retrieve, or transmit quality records.
+
+3.0 SYSTEM ACCESS CONTROLS
+3.1 Password Complexity: User passwords must be a minimum of 8 characters, containing at least one uppercase letter, one lowercase letter, one numeric digit, and one special character. Additionally, Multi-Factor Authentication (MFA) must be enforced for all users.
+3.2 Session Timeout: Computer terminals and software applications must automatically log out a user or lock the display terminal after 15 minutes of continuous keyboard or mouse inactivity.
+3.3 Account Lockout: If a user enters an incorrect password three (3) consecutive times, the system will automatically lock the user account for 30 minutes. Account unlock requests must be approved by the IT System Administrator.
+3.4 User Privileges: All write, modification, and approval privileges are strictly restricted according to user roles. Authority checks must be performed before any transaction is executed.

@@ -5,6 +5,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import settings
+from app.core.security import get_current_user
 
 # Configure SQLAlchemy connection engine and session factory
 engine = create_engine(settings.DATABASE_URL, pool_pre_ping=True)
@@ -32,5 +33,5 @@ def get_tenant_id(
     Falls back to a default organization identifier for MVP/development.
     """
     if not x_tenant_id:
-        return "default-org-id"
+        return "9280d0d8-5527-4632-bd92-4fcf05c75462"
     return x_tenant_id

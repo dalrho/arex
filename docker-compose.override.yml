@@ -18,6 +18,7 @@ services:
       - "8000:8000"
     volumes:
       - ./backend:/app
+      - ./infra:/infra
     environment:
       - DEV_MODE=true
       - LOG_LEVEL=debug

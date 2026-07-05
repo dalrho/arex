@@ -1,0 +1,19 @@
+
+STANDARD OPERATING PROCEDURE: SOP-104
+TITLE: DOCUMENT LIFECYCLE MANAGEMENT CONTROL
+VERSION: 1
+
+1.0 PURPOSE
+Governs the creation, review, approval, revision, distribution, and archival of quality system documents.
+
+2.0 SCOPE
+Applies to all standard operating procedures, design histories, and manufacturing records.
+
+3.0 DOCUMENT LIFE-CYCLE STATES
+3.1 Lifecycle States: All documents must transit through the following defined states:
+  - Draft: Under active development.
+  - Under Review: Circulating for stakeholder feedback.
+  - Approved: Formally signed off and currently in effect.
+  - Retired: Replaced by a newer version or decommissioned.
+3.2 Superseding: When a document is revised, the new version supersedes the old version. The older version must be immediately flagged as 'Retired' and moved to the archive directory.
+3.3 File Archival: Archived files must be stored in read-only folders with modification rights disabled to prevent deletion or overwriting.
