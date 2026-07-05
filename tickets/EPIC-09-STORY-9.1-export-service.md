@@ -15,17 +15,35 @@ This ticket represents the implementation work for the user story in **EPIC 9 â€
 
 ## Technical Tasks
 - [ ] Create export request schema and backend endpoint `/v1/exports`
-- [ ] Implement PDF generator service in `backend/app/services/export/pdf_exporter.py`
-- [ ] Implement Docx generator service in `backend/app/services/export/docx_exporter.py`
+- [ ] Implement PDF generator service in `backend/app/services/export/pdf_exporter.py` using a headless-compatible library (e.g., `reportlab` or `weasyprint`)
+- [ ] Implement Docx generator service in `backend/app/services/export/docx_exporter.py` using `python-docx`
 - [ ] Add template files to `backend/app/services/export/report_templates/`
 - [ ] Build Export component/page in `frontend/src/app/(dashboard)/exports/page.tsx`
 - [ ] Write tests checking that unapproved drafts throw errors during export generation
 
-## Affected Files
-- [pdf_exporter.py](file:///d:/yciad/Documents/AMD%20HACKATHON/arex/backend/app/services/export/pdf_exporter.py)
-- [docx_exporter.py](file:///d:/yciad/Documents/AMD%20HACKATHON/arex/backend/app/services/export/docx_exporter.py)
-- [exports.py](file:///d:/yciad/Documents/AMD%20HACKATHON/arex/backend/app/api/v1/endpoints/exports.py)
-- [page.tsx](file:///d:/yciad/Documents/AMD%20HACKATHON/arex/frontend/src/app/(dashboard)/exports/page.tsx)
+
+## Collaborative Roles
+*   **Backend Developer (Lead):** Write generation scripts in `pdf_exporter.py` (using `reportlab` or `weasyprint`) and `docx_exporter.py` (using `python-docx`).
+*   **Frontend Developer:** Add export selectors and configure file download triggers.
+
+## Integration Contract
+*   **Request Schema (`POST /v1/exports`):**
+    ```json
+    {
+      "format": "pdf",  // Enum: "pdf" | "docx"
+      "report_type": "sop_revision",  // Enum: "sop_revision" | "compliance_report"
+      "target_id": "UUID"
+    }
+    ```
+
+## Junior Developer Tips & Pitfalls
+1.  **Excluding Drafts (Strict Filtering):** Ensure your SQL query explicitly filters `status = 'approved'` when loading text for export compilation. If a draft has a status of `pending_review` or `rejected`, abort the export process immediately and return a `400 Bad Request` explaining that unapproved content cannot be exported.
+2.  **Headless Execution:** Make sure your chosen PDF rendering engine runs headless inside Docker. Libraries like PyQT-based converters require graphical servers. Use standard library solutions like `reportlab` or text-to-pdf packages that run natively without GUI dependecies.
+\n## Affected Files
+- [backend/app/services/export/pdf_exporter.py](backend/app/services/export/pdf_exporter.py)
+- [backend/app/services/export/docx_exporter.py](backend/app/services/export/docx_exporter.py)
+- [backend/app/api/v1/endpoints/exports.py](backend/app/api/v1/endpoints/exports.py)
+- [frontend/src/app/(dashboard](frontend/src/app/(dashboard)/exports/page.tsx)
 
 ## Dependencies
 - EPIC-08-STORY-8.1 (Human Approval workflow)

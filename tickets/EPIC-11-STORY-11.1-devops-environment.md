@@ -15,18 +15,32 @@ This ticket represents the implementation work for the user story in **EPIC 11 â
 
 ## Technical Tasks
 - [ ] Verify and refine main `docker-compose.yml` and `docker-compose.override.yml` configurations
-- [ ] Setup alembic migration schema structures
+- [ ] Configure Alembic migrations setup and verify initialization workflow (`alembic init` / base setup)
 - [ ] Write data seeding script in `infra/scripts/seed_demo_data.py`
 - [ ] Implement environment variable profiles and configuration loading in `backend/app/core/config.py`
 - [ ] Configure local worker container orchestration
+- [ ] Setup OpenAPI schema linting and TypeScript client auto-generation script (e.g., `npx openapi-typescript` or similar package in package.json)
 - [ ] Write health check shell scripts and verify clean docker initialization workflow
 
-## Affected Files
-- [docker-compose.yml](file:///d:/yciad/Documents/AMD%20HACKATHON/arex/docker-compose.yml)
-- [docker-compose.override.yml](file:///d:/yciad/Documents/AMD%20HACKATHON/arex/docker-compose.override.yml)
-- [seed_demo_data.py](file:///d:/yciad/Documents/AMD%20HACKATHON/arex/infra/scripts/seed_demo_data.py)
-- [config.py](file:///d:/yciad/Documents/AMD%20HACKATHON/arex/backend/app/core/config.py)
-- [pyproject.toml](file:///d:/yciad/Documents/AMD%20HACKATHON/arex/backend/pyproject.toml)
+
+## Collaborative Roles
+*   **DevOps / Backend Developer (Lead):** Build the container definitions in `docker-compose.yml` and `docker-compose.override.yml`. Configure environment files and seed scripts.
+*   **Frontend Developer:** Verify local package execution and link hot-reloading configurations.
+
+## Integration Contract
+*   **Client Codegen Script (`package.json`):**
+    Configure a typescript compilation script:
+    `"codegen": "openapi-typescript ../shared/openapi/sentinel-os.yaml --output ./src/types/generated/index.ts"`
+
+## Junior Developer Tips & Pitfalls
+1.  **Local vs Cloud Hardware Switch:** To prevent local systems from running out of VRAM, implement a configuration toggle in `.env`. Check the variable on system startup: if true, route embeddings and prompts to hosted inference providers (e.g. Fireworks API); if false, use the local ROCm PyTorch backend device.
+2.  **Clean Database Seeding:** Seed files should be idempotent. Check if records exist in Postgres or collections exist in Qdrant before executing inserts, so developers can run `make seed` multiple times without duplicate errors.
+\n## Affected Files
+- [docker-compose.yml](docker-compose.yml)
+- [docker-compose.override.yml](docker-compose.override.yml)
+- [infra/scripts/seed_demo_data.py](infra/scripts/seed_demo_data.py)
+- [backend/app/core/config.py](backend/app/core/config.py)
+- [backend/pyproject.toml](backend/pyproject.toml)
 
 ## Dependencies
 - None
