@@ -1,5 +1,5 @@
 import uuid
-from typing import Any, List
+from typing import Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -11,13 +11,18 @@ router = APIRouter()
 
 @router.get("/", response_model=List[TaskResponse])
 def list_tasks(
+    regulation_id: Optional[uuid.UUID] = None,
     db: Session = Depends(get_db)
 ) -> Any:
     """
-    List all compliance implementation tasks.
+    List all compliance implementation tasks, optionally filtered by regulation_id.
     """
-    tasks = db.query(ImplementationTask).all()
+    query = db.query(ImplementationTask)
+    if regulation_id:
+        query = query.filter(ImplementationTask.regulation_id == regulation_id)
+    tasks = query.all()
     return tasks
+
 
 @router.post("/", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
 def create_task(
@@ -83,3 +88,15 @@ def delete_task(
     db.delete(task)
     db.commit()
     return None
+
+@router.patch("/{task_id}", response_model=TaskResponse)
+def patch_task(
+    task_id: uuid.UUID,
+    payload: TaskUpdate,
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Update details or status (TODO/IN_PROGRESS/DONE) of a task via PATCH.
+    """
+    return update_task(task_id=task_id, payload=payload, db=db)
+
