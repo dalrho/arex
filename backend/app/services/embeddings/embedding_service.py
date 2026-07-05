@@ -50,7 +50,8 @@ class EmbeddingService:
         h = hashlib.sha256(text.encode("utf-8")).digest()
         # Seed random with hash
         rng = random.Random(h)
-        embedding = [rng.uniform(-0.1, 0.1) for _ in range(1024)]
+        # Use very small random noise so that keyword biases dominate the similarity score
+        embedding = [rng.uniform(-0.001, 0.001) for _ in range(1024)]
         
         # Semantic biasing
         keywords_biases = {
@@ -71,7 +72,8 @@ class EmbeddingService:
         normalized_text = text.lower()
         for keyword, dim in keywords_biases.items():
             if keyword in normalized_text:
-                embedding[dim] += 0.5  # Add a large positive bias to this dimension
+                embedding[dim] += 1.0  # Add a large positive bias to this dimension
+                break
                 
         # Normalize vector to unit length
         magnitude = sum(x*x for x in embedding) ** 0.5
