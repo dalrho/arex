@@ -1,4 +1,18 @@
-"""
-Sentinel OS - impact.py
-This is a placeholder file for the Sentinel OS backend service.
-"""
+import uuid
+from datetime import datetime
+from typing import List
+from pydantic import BaseModel
+
+class ImpactResponse(BaseModel):
+    id: uuid.UUID
+    regulation_id: uuid.UUID
+    organization_id: uuid.UUID
+    risk_score: float
+    impact_level: str
+    rationale: str
+    affected_departments: List[str]
+    status: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
