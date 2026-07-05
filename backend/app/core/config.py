@@ -5,7 +5,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """
+    """git commit -m "style: auto-sort python imports with isort"
     Application Settings defined using Pydantic Settings.
     Environment variables are automatically mapped and typed.
     """
