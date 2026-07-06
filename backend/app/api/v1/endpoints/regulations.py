@@ -56,6 +56,26 @@ def get_regulation(
         )
     return helper_map_regulation_response(regulation)
 
+from app.workers.monitoring_job import run_monitoring_job
+
+@router.post("/poll", response_model=dict, status_code=status.HTTP_200_OK)
+def trigger_regulations_polling(
+    limit: int = 10,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_tenant_id)
+) -> Any:
+    """
+    On-demand trigger for polling and downloading FDA guidance updates from the Federal Register.
+    """
+    try:
+        new_count = run_monitoring_job(limit=limit)
+        return {"status": "success", "ingested_count": new_count}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to poll FDA endpoints: {str(e)}"
+        )
+
 # We define a custom request body for manual ingestion
 from pydantic import BaseModel as PydanticBaseModel
 class IngestionRequest(PydanticBaseModel):

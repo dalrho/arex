@@ -13,6 +13,7 @@ from app.models.user import User
 from app.api.v1.schemas.approval import ApprovalDecisionRequest, ApprovalRecordResponse
 from app.services.embeddings.embedding_service import embedding_service
 from app.services.vector_db.qdrant_client import vector_db_client
+from app.services.approval_workflow.workflow_state_machine import WorkflowStateMachine
 
 router = APIRouter()
 
@@ -40,6 +41,20 @@ def submit_approval_decision(
     Triggers automated version control upgrades, updates disk storage, and syncs vector index embeddings upon approval.
     Logs an immutable record in the audit log (21 CFR Part 11 compliance).
     """
+    # Enforce RBAC
+    user_role = "user"
+    if current_user:
+        if isinstance(current_user, dict):
+            user_role = current_user.get("role", "user")
+        else:
+            user_role = getattr(current_user, "role", "user")
+
+    if user_role not in ["QA Manager", "Org Admin"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: Only QA Manager or Org Admin roles can submit approval decisions."
+        )
+
     draft = db.query(RemediationDraft).filter(RemediationDraft.id == remediation_id).first()
     if not draft:
         raise HTTPException(
@@ -47,17 +62,13 @@ def submit_approval_decision(
             detail="Remediation draft not found"
         )
 
-    if draft.status != "PENDING_REVIEW":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Remediation draft is in status '{draft.status}' and cannot be approved/rejected."
-        )
-
     decision = payload.decision.upper()
-    if decision not in ["APPROVED", "REJECTED"]:
+    try:
+        WorkflowStateMachine.validate_transition(draft.status, decision)
+    except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Decision must be either 'APPROVED' or 'REJECTED'."
+            detail=str(e)
         )
 
     # Extract reviewer ID from current user context
