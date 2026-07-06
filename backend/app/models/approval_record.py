@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, DateTime, ForeignKey, JSON
+from sqlalchemy import String, DateTime, ForeignKey, JSON, event
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
@@ -20,3 +20,12 @@ class ApprovalRecord(Base):
 
     # Relationships
     reviewer: Mapped["User"] = relationship()
+
+@event.listens_for(ApprovalRecord, "before_update")
+def prevent_approval_record_update(mapper, connection, target):
+    raise ValueError("Approval records are immutable and cannot be updated (21 CFR Part 11).")
+
+@event.listens_for(ApprovalRecord, "before_delete")
+def prevent_approval_record_delete(mapper, connection, target):
+    raise ValueError("Approval records are immutable and cannot be deleted (21 CFR Part 11).")
+
