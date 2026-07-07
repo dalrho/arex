@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useState } from "react";
+import React, { forwardRef, useImperativeHandle, useRef, useState } from "react";
 import { CheckCircle2, FileText, Info, Loader2, UploadCloud, X, XCircle } from "lucide-react";
 import clsx from "clsx";
 import { uploadDocument } from "@/lib/apiClient";
@@ -28,10 +28,20 @@ function formatSize(bytes: number): string {
   return `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
 
-export default function DocumentUploader({ onUploaded }: DocumentUploaderProps) {
+export interface DocumentUploaderHandle {
+  /** Opens the native file picker; used by external "Upload" buttons. */
+  openFileDialog: () => void;
+}
+
+const DocumentUploader = forwardRef<DocumentUploaderHandle, DocumentUploaderProps>(
+  function DocumentUploader({ onUploaded }, ref) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);
   const [items, setItems] = useState<UploadItem[]>([]);
+
+  useImperativeHandle(ref, () => ({
+    openFileDialog: () => inputRef.current?.click(),
+  }));
 
   function updateItem(id: string, patch: Partial<UploadItem>) {
     setItems((prev) => prev.map((item) => (item.id === id ? { ...item, ...patch } : item)));
@@ -229,4 +239,6 @@ export default function DocumentUploader({ onUploaded }: DocumentUploaderProps) 
       </div>
     </div>
   );
-}
+});
+
+export default DocumentUploader;

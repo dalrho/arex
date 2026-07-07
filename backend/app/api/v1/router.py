@@ -10,13 +10,15 @@ from app.api.v1.endpoints import (
     tasks,
     approvals,
     dashboard,
-    exports
+    exports,
+    users,
 )
 
 api_router = APIRouter()
 
 # Register sub-routers
 api_router.include_router(auth.router, prefix="/auth", tags=["Authentication"])
+api_router.include_router(users.router, prefix="/users", tags=["Users"])
 api_router.include_router(organizations.router, prefix="/organizations", tags=["Organizations"])
 api_router.include_router(documents.router, prefix="/documents", tags=["Documents"])
 api_router.include_router(regulations.router, prefix="/regulations", tags=["Regulations"])

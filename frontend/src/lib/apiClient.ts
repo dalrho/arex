@@ -4,14 +4,17 @@
 import type {
   ApprovalRecordResponse,
   AuthUser,
+  DashboardMetrics,
   DiffContent,
   DocumentResponse,
   ImpactResponse,
   LoginResponse,
   RegulationResponse,
   RemediationResponse,
+  TaskCreatePayload,
   TaskResponse,
   TaskUpdatePayload,
+  UserResponse,
 } from "@/types/api";
 
 const API_BASE = "/api/v1";
@@ -111,6 +114,18 @@ export function login(email: string, password: string): Promise<LoginResponse> {
   });
 }
 
+// ---- Users ----
+
+export function listUsers(): Promise<UserResponse[]> {
+  return getJson("/users");
+}
+
+// ---- Dashboard ----
+
+export function getDashboard(): Promise<DashboardMetrics> {
+  return getJson("/dashboard");
+}
+
 // ---- Documents ----
 
 export function listDocuments(): Promise<DocumentResponse[]> {
@@ -136,6 +151,15 @@ export function deleteDocument(id: string): Promise<void> {
     method: "DELETE",
     headers: buildHeaders(),
   });
+}
+
+export async function downloadDocument(id: string, filename: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/documents/${id}/download`, {
+    headers: buildHeaders(),
+  });
+  if (!res.ok) throw await parseError(res);
+  const blob = await res.blob();
+  triggerBlobDownload(blob, filename);
 }
 
 // ---- Regulations ----
@@ -168,6 +192,19 @@ export function getRemediation(id: string): Promise<RemediationResponse> {
   return getJson(`/remediation/${id}`);
 }
 
+export function updateRemediation(
+  id: string,
+  proposedText: string
+): Promise<RemediationResponse> {
+  return sendJson(`/remediation/${id}`, "PUT", { proposed_text: proposedText });
+}
+
+export function generateRemediationDrafts(
+  regulationId: string
+): Promise<RemediationResponse[]> {
+  return sendJson(`/remediation/regulation/${regulationId}`, "POST");
+}
+
 // ---- Approvals ----
 
 export function submitApprovalDecision(
@@ -177,10 +214,18 @@ export function submitApprovalDecision(
   return sendJson(`/approvals/remediation/${remediationId}`, "POST", { decision });
 }
 
+export function listApprovalRecords(): Promise<ApprovalRecordResponse[]> {
+  return getJson("/approvals/records");
+}
+
 // ---- Tasks ----
 
 export function listTasks(): Promise<TaskResponse[]> {
   return getJson("/tasks");
+}
+
+export function createTask(payload: TaskCreatePayload): Promise<TaskResponse> {
+  return sendJson("/tasks", "POST", payload);
 }
 
 export function updateTask(id: string, payload: TaskUpdatePayload): Promise<TaskResponse> {
@@ -188,6 +233,17 @@ export function updateTask(id: string, payload: TaskUpdatePayload): Promise<Task
 }
 
 // ---- Exports ----
+
+function triggerBlobDownload(blob: Blob, filename: string): void {
+  const url = window.URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.URL.revokeObjectURL(url);
+}
 
 export async function downloadRemediationExport(
   remediationId: string,
@@ -203,14 +259,7 @@ export async function downloadRemediationExport(
   const filename = match ? match[1].trim() : `remediation-report.${format}`;
 
   const blob = await res.blob();
-  const url = window.URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  window.URL.revokeObjectURL(url);
+  triggerBlobDownload(blob, filename);
 }
 
 export type { DiffContent };

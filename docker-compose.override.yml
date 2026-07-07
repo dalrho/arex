@@ -31,6 +31,8 @@ services:
     volumes:
       - ./frontend:/app
       - /app/node_modules
+      - /app/.next
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:8000
       - NODE_ENV=development
+    command: sh -c "find .next -mindepth 1 -maxdepth 1 -exec rm -rf {} + || true; npm run dev"

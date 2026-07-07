@@ -10,13 +10,14 @@ interface ApprovalActionBarProps {
   status: string;
   busy: boolean;
   onDecision: (decision: "APPROVED" | "REJECTED") => void;
+  onRequestEdit: () => void;
 }
 
 /**
  * Floating sign-off bar for remediation review. Approve/Reject actions are
  * enabled only for pending drafts reviewed by a QA Manager or Org Admin.
  */
-export default function ApprovalActionBar({ status, busy, onDecision }: ApprovalActionBarProps) {
+export default function ApprovalActionBar({ status, busy, onDecision, onRequestEdit }: ApprovalActionBarProps) {
   // Read auth state after mount to avoid SSR/client hydration mismatch.
   const [auth, setAuth] = useState<{ signedIn: boolean; canApprove: boolean }>({
     signedIn: false,
@@ -45,22 +46,22 @@ export default function ApprovalActionBar({ status, busy, onDecision }: Approval
 
   return (
     <div className="sticky bottom-0 z-10 -mx-4 bg-gradient-to-t from-slate-100 via-slate-100/95 to-transparent px-4 pb-4 pt-2 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
-      <div className="flex flex-wrap items-center gap-4 rounded-lg border border-slate-300 bg-white px-5 py-4 shadow-lg">
+      <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-lg shadow-slate-950/10 lg:flex-row lg:items-center">
         <div className="flex min-w-0 flex-1 items-center gap-3 text-xs text-slate-500">
-          <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-md bg-slate-100 text-slate-700">
-            <Lock className="h-5 w-5" />
+          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md bg-slate-100 text-slate-700">
+            <Lock className="h-4 w-4" />
           </div>
-          <span>
+          <span className="leading-5">
             {disabledReason ??
               "Your decision will be recorded in the immutable audit trail and cannot be changed after signing."}
           </span>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 lg:flex lg:flex-wrap lg:items-center">
           <button
             type="button"
             disabled={!enabled}
             onClick={() => onDecision("REJECTED")}
-            className="inline-flex h-11 min-w-36 items-center justify-center gap-2 rounded-md border border-red-300 bg-white px-4 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex h-10 min-w-32 items-center justify-center gap-2 rounded-md border border-red-200 bg-white px-4 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
             Reject
@@ -68,7 +69,8 @@ export default function ApprovalActionBar({ status, busy, onDecision }: Approval
           <button
             type="button"
             disabled={!enabled}
-            className="inline-flex h-11 min-w-40 items-center justify-center gap-2 rounded-md border border-blue-300 bg-white px-4 text-sm font-semibold text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={onRequestEdit}
+            className="inline-flex h-10 min-w-36 items-center justify-center gap-2 rounded-md border border-blue-200 bg-white px-4 text-sm font-semibold text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Edit3 className="h-4 w-4" />
             Request Edit
@@ -77,7 +79,7 @@ export default function ApprovalActionBar({ status, busy, onDecision }: Approval
             type="button"
             disabled={!enabled}
             onClick={() => onDecision("APPROVED")}
-            className="inline-flex h-11 min-w-56 items-center justify-center gap-2 rounded-md bg-emerald-700 px-5 text-sm font-semibold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex h-10 min-w-48 items-center justify-center gap-2 rounded-md bg-emerald-700 px-5 text-sm font-semibold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
             Approve &amp; Sign

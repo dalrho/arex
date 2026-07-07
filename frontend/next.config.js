@@ -6,7 +6,15 @@ const backendUrl = process.env.BACKEND_URL || "http://backend:8000";
 // (e.g. /api/v1/documents/), but Next.js strips trailing slashes when
 // proxying. Map the collection roots explicitly so no 307 redirect to the
 // backend host (unreachable from the browser in Docker) is triggered.
-const collectionRoots = ["documents", "regulations", "remediation", "tasks", "impact"];
+const collectionRoots = [
+  "dashboard",
+  "documents",
+  "regulations",
+  "remediation",
+  "tasks",
+  "impact",
+  "users",
+];
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {

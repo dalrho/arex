@@ -98,10 +98,49 @@ export interface TaskResponse {
   created_at: string;
 }
 
+export interface TaskCreatePayload {
+  regulation_id: string;
+  remediation_draft_id?: string | null;
+  title: string;
+  description: string;
+  department: string;
+  priority?: string;
+}
+
 export interface TaskUpdatePayload {
   title?: string;
   description?: string;
   department?: string;
   priority?: string;
   status?: string;
+}
+
+export interface UserResponse {
+  id: string;
+  email: string;
+  role: string;
+  created_at: string;
+}
+
+export type DashboardActivityType =
+  | "document_uploaded"
+  | "regulation_monitored"
+  | "remediation_approved"
+  | "remediation_rejected";
+
+export interface DashboardActivity {
+  type: DashboardActivityType | string;
+  message: string;
+  timestamp: string;
+  meta: Record<string, string>;
+}
+
+export interface DashboardMetrics {
+  total_documents: number;
+  total_regulations: number;
+  pending_assessments: number;
+  pending_remediations: number;
+  open_tasks: number;
+  max_risk_score: number;
+  recent_activity: DashboardActivity[];
 }

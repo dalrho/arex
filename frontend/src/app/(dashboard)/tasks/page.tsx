@@ -14,7 +14,10 @@ import {
   Search,
   Scale,
 } from "lucide-react";
+import clsx from "clsx";
 import StatusBadge from "@/components/ui/StatusBadge";
+import Dropdown, { menuItemClass } from "@/components/ui/Dropdown";
+import Modal from "@/components/ui/Modal";
 import {
   EmptyState,
   PageHeader,
@@ -23,10 +26,34 @@ import {
   ToolbarInput,
   WorkbenchCard,
 } from "@/components/ui/Workbench";
-import { listTasks, updateTask } from "@/lib/apiClient";
-import type { TaskResponse } from "@/types/api";
+import { createTask, listRegulations, listTasks, updateTask } from "@/lib/apiClient";
+import type { RegulationResponse, TaskResponse } from "@/types/api";
 
 const STATUS_OPTIONS = ["TODO", "IN_PROGRESS", "DONE"] as const;
+const PRIORITY_OPTIONS = ["Critical", "High", "Medium", "Low"] as const;
+const DEPARTMENT_OPTIONS = [
+  "Quality Assurance",
+  "Regulatory Affairs",
+  "Operations",
+  "IT / Systems",
+  "Manufacturing",
+];
+
+interface NewTaskForm {
+  title: string;
+  description: string;
+  department: string;
+  priority: string;
+  regulation_id: string;
+}
+
+const EMPTY_FORM: NewTaskForm = {
+  title: "",
+  description: "",
+  department: DEPARTMENT_OPTIONS[0],
+  priority: "Medium",
+  regulation_id: "",
+};
 
 /**
  * Tasks Page ("/tasks")
@@ -34,30 +61,75 @@ const STATUS_OPTIONS = ["TODO", "IN_PROGRESS", "DONE"] as const;
  */
 export default function TasksPage() {
   const [tasks, setTasks] = useState<TaskResponse[]>([]);
+  const [regulations, setRegulations] = useState<RegulationResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
+  // Filters
+  const [search, setSearch] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [regulationFilter, setRegulationFilter] = useState("all");
+  const [priorityFilter, setPriorityFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [departmentFilter, setDepartmentFilter] = useState<string | null>(null);
+
+  // Create Task modal
+  const [createOpen, setCreateOpen] = useState(false);
+  const [form, setForm] = useState<NewTaskForm>(EMPTY_FORM);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+
   useEffect(() => {
-    listTasks()
-      .then(setTasks)
+    Promise.all([listTasks(), listRegulations().catch(() => [] as RegulationResponse[])])
+      .then(([taskList, regs]) => {
+        setTasks(taskList);
+        setRegulations(regs);
+      })
       .catch((err) => setLoadError(err instanceof Error ? err.message : "Failed to load tasks."))
       .finally(() => setLoading(false));
   }, []);
 
+  const visibleTasks = useMemo(() => {
+    let result = tasks;
+    const query = search.trim().toLowerCase();
+    if (query) {
+      result = result.filter(
+        (t) =>
+          t.title.toLowerCase().includes(query) ||
+          (t.description ?? "").toLowerCase().includes(query)
+      );
+    }
+    if (regulationFilter !== "all") {
+      result = result.filter((t) => t.regulation_id === regulationFilter);
+    }
+    if (priorityFilter !== "all") {
+      result = result.filter((t) => t.priority?.toLowerCase() === priorityFilter.toLowerCase());
+    }
+    if (statusFilter) {
+      result = result.filter((t) => t.status === statusFilter);
+    }
+    if (departmentFilter) {
+      result = result.filter((t) => (t.department || "Unassigned") === departmentFilter);
+    }
+    return result;
+  }, [tasks, search, regulationFilter, priorityFilter, statusFilter, departmentFilter]);
+
   const byDepartment = useMemo(() => {
     const groups = new Map<string, TaskResponse[]>();
-    for (const task of tasks) {
+    for (const task of visibleTasks) {
       const dept = task.department || "Unassigned";
       const group = groups.get(dept) ?? [];
       group.push(task);
       groups.set(dept, group);
     }
     return Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b));
-  }, [tasks]);
+  }, [visibleTasks]);
 
   const openCount = tasks.filter((t) => t.status !== "DONE").length;
   const criticalCount = tasks.filter((t) => t.priority?.toLowerCase() === "critical").length;
+  const filtersActive =
+    regulationFilter !== "all" || priorityFilter !== "all" || statusFilter !== null || departmentFilter !== null;
 
   async function handleStatusChange(task: TaskResponse, status: string) {
     setUpdatingId(task.id);
@@ -71,6 +143,48 @@ export default function TasksPage() {
     }
   }
 
+  function openCreateModal(department?: string) {
+    setForm({
+      ...EMPTY_FORM,
+      department: department ?? EMPTY_FORM.department,
+      regulation_id: regulations[0]?.id ?? "",
+    });
+    setCreateError(null);
+    setCreateOpen(true);
+  }
+
+  async function handleCreateTask() {
+    if (!form.title.trim() || !form.regulation_id) {
+      setCreateError("A title and source regulation are required.");
+      return;
+    }
+    setCreating(true);
+    setCreateError(null);
+    try {
+      const created = await createTask({
+        regulation_id: form.regulation_id,
+        title: form.title.trim(),
+        description: form.description.trim() || form.title.trim(),
+        department: form.department,
+        priority: form.priority,
+      });
+      setTasks((prev) => [created, ...prev]);
+      setCreateOpen(false);
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : "Failed to create task.");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  function resetFilters() {
+    setSearch("");
+    setRegulationFilter("all");
+    setPriorityFilter("all");
+    setStatusFilter(null);
+    setDepartmentFilter(null);
+  }
+
   return (
     <div className="space-y-5">
       <PageHeader
@@ -79,11 +193,16 @@ export default function TasksPage() {
         description="AI-generated implementation requirements grouped by department."
         actions={
           <>
-            <ToolbarButton type="button">
+            <ToolbarButton
+              type="button"
+              onClick={() => setFiltersOpen((value) => !value)}
+              aria-expanded={filtersOpen}
+              className={filtersActive || filtersOpen ? "border-blue-300 bg-blue-50 text-blue-700" : undefined}
+            >
               <Filter className="h-4 w-4" />
               Filters
             </ToolbarButton>
-            <PrimaryButton type="button">
+            <PrimaryButton type="button" onClick={() => openCreateModal()} disabled={loading}>
               <Plus className="h-4 w-4" />
               Create Task
             </PrimaryButton>
@@ -96,30 +215,103 @@ export default function TasksPage() {
           <ToolbarInput
             icon={Search}
             type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
             placeholder="Search tasks..."
             className="min-w-[260px] flex-1 md:max-w-sm"
           />
-          <select className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-700">
-            <option>All Regulations</option>
+          <select
+            value={regulationFilter}
+            onChange={(e) => setRegulationFilter(e.target.value)}
+            className="h-10 max-w-[220px] rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-700"
+          >
+            <option value="all">All Regulations</option>
+            {regulations.map((reg) => (
+              <option key={reg.id} value={reg.id}>
+                {reg.title.slice(0, 48)}
+              </option>
+            ))}
           </select>
-          <select className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-700">
-            <option>All Priorities</option>
+          <select
+            value={priorityFilter}
+            onChange={(e) => setPriorityFilter(e.target.value)}
+            className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-700"
+          >
+            <option value="all">All Priorities</option>
+            {PRIORITY_OPTIONS.map((priority) => (
+              <option key={priority} value={priority}>
+                {priority}
+              </option>
+            ))}
           </select>
           <div className="flex h-10 overflow-hidden rounded-md border border-slate-200 bg-white">
             {STATUS_OPTIONS.map((status) => (
               <button
                 key={status}
                 type="button"
-                className="border-r border-slate-200 px-4 text-xs font-bold text-slate-600 last:border-r-0 hover:bg-slate-50"
+                onClick={() => setStatusFilter((current) => (current === status ? null : status))}
+                aria-pressed={statusFilter === status}
+                className={clsx(
+                  "border-r border-slate-200 px-4 text-xs font-bold last:border-r-0",
+                  statusFilter === status
+                    ? "bg-blue-600 text-white"
+                    : "text-slate-600 hover:bg-slate-50"
+                )}
               >
                 {status.replace("_", " ")}
-                <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-[11px]">
+                <span
+                  className={clsx(
+                    "ml-2 rounded-full px-2 py-0.5 text-[11px]",
+                    statusFilter === status ? "bg-white/20" : "bg-slate-100"
+                  )}
+                >
                   {tasks.filter((task) => task.status === status).length}
                 </span>
               </button>
             ))}
           </div>
+          {filtersActive && (
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="text-sm font-semibold text-blue-700 hover:underline"
+            >
+              Reset
+            </button>
+          )}
         </div>
+        {filtersOpen && (
+          <div className="flex flex-wrap items-center gap-3 border-t border-slate-200 bg-slate-50/60 p-3 text-sm text-slate-600">
+            <span className="font-semibold">Department:</span>
+            <button
+              type="button"
+              onClick={() => setDepartmentFilter(null)}
+              className={clsx(
+                "rounded-md border px-2.5 py-1 text-xs font-semibold",
+                departmentFilter === null
+                  ? "border-blue-600 bg-blue-600 text-white"
+                  : "border-slate-200 bg-white text-slate-600 hover:border-blue-300"
+              )}
+            >
+              All
+            </button>
+            {Array.from(new Set(tasks.map((t) => t.department || "Unassigned"))).map((dept) => (
+              <button
+                key={dept}
+                type="button"
+                onClick={() => setDepartmentFilter((current) => (current === dept ? null : dept))}
+                className={clsx(
+                  "rounded-md border px-2.5 py-1 text-xs font-semibold",
+                  departmentFilter === dept
+                    ? "border-blue-600 bg-blue-600 text-white"
+                    : "border-slate-200 bg-white text-slate-600 hover:border-blue-300"
+                )}
+              >
+                {dept}
+              </button>
+            ))}
+          </div>
+        )}
       </WorkbenchCard>
 
       {loading ? (
@@ -135,6 +327,13 @@ export default function TasksPage() {
           <EmptyState
             title="No implementation tasks yet"
             description="Tasks are generated when remediation drafts are created."
+          />
+        </WorkbenchCard>
+      ) : visibleTasks.length === 0 ? (
+        <WorkbenchCard>
+          <EmptyState
+            title="No tasks match your filters"
+            description="Adjust the search, status, or department filters to widen the list."
           />
         </WorkbenchCard>
       ) : (
@@ -153,7 +352,47 @@ export default function TasksPage() {
                         {deptTasks.length}
                       </span>
                     </div>
-                    <MoreHorizontal className="h-4 w-4 text-slate-400" />
+                    <Dropdown
+                      trigger={({ open, toggle }) => (
+                        <button
+                          type="button"
+                          onClick={toggle}
+                          aria-expanded={open}
+                          aria-haspopup="menu"
+                          aria-label={`Actions for ${department}`}
+                          className="rounded-md p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700"
+                        >
+                          <MoreHorizontal className="h-4 w-4" />
+                        </button>
+                      )}
+                    >
+                      {(close) => (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              close();
+                              openCreateModal(department);
+                            }}
+                            className={menuItemClass}
+                          >
+                            <Plus className="h-4 w-4 text-slate-500" />
+                            Add task to {department}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              close();
+                              setDepartmentFilter(department);
+                            }}
+                            className={menuItemClass}
+                          >
+                            <Filter className="h-4 w-4 text-slate-500" />
+                            Focus on this department
+                          </button>
+                        </>
+                      )}
+                    </Dropdown>
                   </div>
                   <div className="space-y-2 p-3">
                     {deptTasks.slice(0, 3).map((task) => (
@@ -206,6 +445,7 @@ export default function TasksPage() {
                     ))}
                     <button
                       type="button"
+                      onClick={() => openCreateModal(department)}
                       className="flex w-full items-center justify-center gap-1 rounded-md px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50"
                     >
                       <Plus className="h-4 w-4" />
@@ -231,7 +471,7 @@ export default function TasksPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {tasks.slice(0, 8).map((task) => (
+                    {visibleTasks.slice(0, 8).map((task) => (
                       <tr key={task.id} className="hover:bg-slate-50/70">
                         <td className="px-4 py-3">
                           <p className="text-sm font-semibold text-blue-700">{task.title}</p>
@@ -277,7 +517,15 @@ export default function TasksPage() {
                   <p className="text-sm font-semibold text-slate-600">Critical Blockers</p>
                 </div>
                 <p className="text-3xl font-bold text-slate-950">{criticalCount}</p>
-                <button type="button" className="mt-3 text-sm font-semibold text-blue-700 hover:underline">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPriorityFilter("Critical");
+                    setStatusFilter(null);
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                  }}
+                  className="mt-3 text-sm font-semibold text-blue-700 hover:underline"
+                >
                   View all blockers
                 </button>
               </div>
@@ -309,6 +557,100 @@ export default function TasksPage() {
           </aside>
         </div>
       )}
+
+      <Modal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        title="Create Task"
+        description="Add a compliance implementation action item."
+        footer={
+          <>
+            <ToolbarButton type="button" onClick={() => setCreateOpen(false)}>
+              Cancel
+            </ToolbarButton>
+            <PrimaryButton type="button" onClick={() => void handleCreateTask()} disabled={creating}>
+              {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+              Create Task
+            </PrimaryButton>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          {createError && (
+            <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {createError}
+            </div>
+          )}
+          <label className="block text-sm font-semibold text-slate-700">
+            Title
+            <input
+              type="text"
+              value={form.title}
+              onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))}
+              placeholder="e.g. Update change-control SOP for electronic records"
+              autoFocus
+              className="mt-2 h-10 w-full rounded-md border border-slate-200 px-3 text-sm font-normal text-slate-800 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+            />
+          </label>
+          <label className="block text-sm font-semibold text-slate-700">
+            Description
+            <textarea
+              value={form.description}
+              onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
+              rows={3}
+              placeholder="What needs to be done and why."
+              className="mt-2 w-full rounded-md border border-slate-200 px-3 py-2 text-sm font-normal text-slate-800 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+            />
+          </label>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block text-sm font-semibold text-slate-700">
+              Department
+              <select
+                value={form.department}
+                onChange={(e) => setForm((prev) => ({ ...prev, department: e.target.value }))}
+                className="mt-2 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm font-normal text-slate-800"
+              >
+                {Array.from(
+                  new Set([...DEPARTMENT_OPTIONS, ...tasks.map((t) => t.department).filter(Boolean)])
+                ).map((dept) => (
+                  <option key={dept} value={dept}>
+                    {dept}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-sm font-semibold text-slate-700">
+              Priority
+              <select
+                value={form.priority}
+                onChange={(e) => setForm((prev) => ({ ...prev, priority: e.target.value }))}
+                className="mt-2 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm font-normal text-slate-800"
+              >
+                {PRIORITY_OPTIONS.map((priority) => (
+                  <option key={priority} value={priority}>
+                    {priority}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <label className="block text-sm font-semibold text-slate-700">
+            Source Regulation
+            <select
+              value={form.regulation_id}
+              onChange={(e) => setForm((prev) => ({ ...prev, regulation_id: e.target.value }))}
+              className="mt-2 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm font-normal text-slate-800"
+            >
+              {regulations.length === 0 && <option value="">No regulations available</option>}
+              {regulations.map((reg) => (
+                <option key={reg.id} value={reg.id}>
+                  {reg.title.slice(0, 64)}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      </Modal>
     </div>
   );
 }
