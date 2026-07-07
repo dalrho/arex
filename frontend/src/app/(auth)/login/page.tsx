@@ -1,11 +1,35 @@
-import React from "react";
-import Link from "next/link";
+"use client";
+
+import React, { useState } from "react";
+import { useRouter } from "next/navigation";
+import { login, setSession } from "@/lib/apiClient";
 
 /**
  * Login Page ("/login")
- * Part of the (auth) route group. Shows a structural form for authentication.
+ * Part of the (auth) route group. Authenticates against the backend and
+ * stores the JWT + user (role, org_id) for tenant-scoped API calls.
  */
 export default function LoginPage() {
+  const router = useRouter();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+    setSubmitting(true);
+    try {
+      const result = await login(email, password);
+      setSession(result.access_token, result.user);
+      router.push("/dashboard");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Login failed. Please try again.");
+      setSubmitting(false);
+    }
+  }
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-slate-900 px-4 sm:px-6 lg:px-8">
       <div className="w-full max-w-md space-y-8 bg-slate-950/50 p-8 rounded-2xl border border-slate-800 shadow-xl backdrop-blur-md">
@@ -17,7 +41,7 @@ export default function LoginPage() {
             Secure multi-tenant workspace login
           </p>
         </div>
-        <form className="mt-8 space-y-6" action="#" method="POST">
+        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           <div className="space-y-4 rounded-md shadow-sm">
             <div>
               <label htmlFor="email-address" className="sr-only">
@@ -29,6 +53,8 @@ export default function LoginPage() {
                 type="email"
                 autoComplete="email"
                 required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 className="relative block w-full rounded-lg border border-slate-700 bg-slate-900/50 px-3 py-3 text-white placeholder-slate-500 focus:z-10 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 sm:text-sm"
                 placeholder="Email address"
               />
@@ -43,37 +69,27 @@ export default function LoginPage() {
                 type="password"
                 autoComplete="current-password"
                 required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
                 className="relative block w-full rounded-lg border border-slate-700 bg-slate-900/50 px-3 py-3 text-white placeholder-slate-500 focus:z-10 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 sm:text-sm"
                 placeholder="Password"
               />
             </div>
           </div>
 
-          <div className="flex items-center justify-between text-sm">
-            <div className="flex items-center">
-              <input
-                id="remember-me"
-                name="remember-me"
-                type="checkbox"
-                className="h-4 w-4 rounded border-slate-700 bg-slate-900 text-blue-600 focus:ring-blue-500"
-              />
-              <label htmlFor="remember-me" className="ml-2 block text-slate-400">
-                Remember me
-              </label>
+          {error && (
+            <div className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+              {error}
             </div>
-            <div className="text-sm">
-              <a href="#" className="font-medium text-blue-400 hover:text-blue-500">
-                Forgot password?
-              </a>
-            </div>
-          </div>
+          )}
 
           <div>
             <button
-              type="button"
-              className="group relative flex w-full justify-center rounded-lg bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-900 transition-all"
+              type="submit"
+              disabled={submitting}
+              className="group relative flex w-full justify-center rounded-lg bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-900 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              Sign In
+              {submitting ? "Signing in..." : "Sign In"}
             </button>
           </div>
         </form>

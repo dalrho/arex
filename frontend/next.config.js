@@ -1,12 +1,26 @@
+// In Docker Compose the backend hostname is 'backend'; override with
+// BACKEND_URL (e.g. http://localhost:8000) for local development.
+const backendUrl = process.env.BACKEND_URL || "http://backend:8000";
+
+// FastAPI collection endpoints are registered with a trailing slash
+// (e.g. /api/v1/documents/), but Next.js strips trailing slashes when
+// proxying. Map the collection roots explicitly so no 307 redirect to the
+// backend host (unreachable from the browser in Docker) is triggered.
+const collectionRoots = ["documents", "regulations", "remediation", "tasks", "impact"];
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
   // Rewrite requests starting with /api to the FastAPI backend running on port 8000
   async rewrites() {
     return [
+      ...collectionRoots.map((root) => ({
+        source: `/api/v1/${root}`,
+        destination: `${backendUrl}/api/v1/${root}/`,
+      })),
       {
         source: "/api/:path*",
-        destination: "http://backend:8000/api/:path*", // In Docker Compose environment, backend hostname is 'backend'
+        destination: `${backendUrl}/api/:path*`,
       },
     ];
   },
