@@ -133,6 +133,49 @@ def list_documents(
     documents = db.query(Document).filter(Document.organization_id == org_id).all()
     return documents
 
+@router.get("/{document_id}/download")
+def download_document(
+    document_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_tenant_id)
+) -> Any:
+    """
+    Download the original uploaded file for a document. Falls back to the
+    parsed text if the original binary is no longer available on disk.
+    """
+    from fastapi.responses import FileResponse, Response
+
+    org_id = uuid.UUID(tenant_id)
+    document = db.query(Document).filter(
+        Document.id == document_id,
+        Document.organization_id == org_id
+    ).first()
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found"
+        )
+
+    if document.file_path and os.path.exists(document.file_path):
+        return FileResponse(
+            path=document.file_path,
+            filename=document.filename,
+            media_type="application/octet-stream",
+        )
+
+    if document.parsed_text:
+        fallback_name = os.path.splitext(document.filename)[0] + ".txt"
+        return Response(
+            content=document.parsed_text,
+            media_type="text/plain; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{fallback_name}"'},
+        )
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="Stored file is no longer available for this document."
+    )
+
 @router.get("/{document_id}", response_model=DocumentResponse)
 def get_document(
     document_id: uuid.UUID,

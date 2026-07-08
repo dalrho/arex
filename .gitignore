@@ -12,6 +12,8 @@ downloads/
 eggs/
 .eggs/
 lib/
+# The Python "lib/" rule above must not swallow frontend source code
+!frontend/src/lib/
 lib64/
 parts/
 sdist/
@@ -74,3 +76,4 @@ Thumbs.db
 
 # Project specific
 # (alembic.ini is tracked to enable migrations in development/CI environments)
+backend/storage/
