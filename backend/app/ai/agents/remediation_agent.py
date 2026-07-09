@@ -92,6 +92,42 @@ def run_remediation_agent(state: Dict[str, Any]) -> Dict[str, Any]:
                 continue
                 
             logger.info(f"Generating remediation draft for SOP: {doc.filename}...")
+
+            # -----------------------------------------------------------------------
+            # RAG: Retrieve relevant KB chunks for this document + regulation pair
+            # -----------------------------------------------------------------------
+            context_docs = []
+            try:
+                from app.services.embeddings.embedding_service import embedding_service
+                from app.services.vector_db.qdrant_client import vector_db_client
+
+                query_text = f"{regulation.raw_content} {doc.parsed_text[:500]}"
+                query_vector = embedding_service.get_embedding(query_text)
+                org_id = uuid.UUID(organization_id_str)
+                chunks = vector_db_client.search_chunks(
+                    query_vector=query_vector,
+                    organization_id=org_id,
+                    limit=5,
+                )
+                context_docs = [
+                    {
+                        "document_name": c.get("document_id", "KB Document"),
+                        "text_snippet": c.get("text", ""),
+                        "confidence_score": round(c.get("score", 0.0) * 100, 1),
+                    }
+                    for c in chunks
+                    if c.get("score", 0.0) >= 0.5
+                ]
+                logger.info(
+                    f"[RemediationAgent] RAG retrieved {len(context_docs)} supporting chunks "
+                    f"for document '{doc.filename}'."
+                )
+            except Exception as rag_err:
+                logger.warning(
+                    f"[RemediationAgent] RAG retrieval failed for '{doc.filename}': {rag_err}. "
+                    "Proceeding without KB context."
+                )
+            # -----------------------------------------------------------------------
             
             user_prompt = (
                 f"SOURCE REGULATION UPDATE:\n{regulation.raw_content}\n\n"
@@ -101,10 +137,15 @@ def run_remediation_agent(state: Dict[str, Any]) -> Dict[str, Any]:
             
             messages = [
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
+                {"role": "user", "content": user_prompt},
             ]
-            
+
             # Execute agent call with citation validation retry loop
+            logger.info(
+                f"[RemediationAgent] Calling LLM | document='{doc.filename}' | "
+                f"context_docs={len(context_docs)} | "
+                f"mode={'online' if not llm_client.is_offline_mode() else 'offline'}"
+            )
             attempts = 3
             result = None
             for attempt in range(1, attempts + 1):
@@ -112,7 +153,8 @@ def run_remediation_agent(state: Dict[str, Any]) -> Dict[str, Any]:
                     result = llm_client.get_completion(
                         messages=messages,
                         response_model=RemediationAgentOutput,
-                        temperature=0.0
+                        temperature=0.0,
+                        context_docs=context_docs if context_docs else None,
                     )
                     
                     # Validate citations
@@ -156,6 +198,7 @@ def run_remediation_agent(state: Dict[str, Any]) -> Dict[str, Any]:
                 logger.info(f"Draft already exists for {doc.filename}. Updating proposed text.")
                 existing_draft.proposed_text = result.proposed_text
                 existing_draft.diff_content = diff_meta
+                existing_draft.explanation = result.rationale
                 existing_draft.status = "PENDING_REVIEW"
                 db.commit()
                 db.refresh(existing_draft)
@@ -168,12 +211,14 @@ def run_remediation_agent(state: Dict[str, Any]) -> Dict[str, Any]:
                     proposed_text=result.proposed_text,
                     original_text=doc.parsed_text,
                     diff_content=diff_meta,
+                    explanation=result.rationale,
                     status="PENDING_REVIEW"
                 )
                 db.add(new_draft)
                 db.commit()
                 db.refresh(new_draft)
                 draft_ids.append(str(new_draft.id))
+
                 
         logger.info(f"Remediation Agent successfully generated {len(draft_ids)} drafts.")
         return {"remediation_draft_ids": draft_ids}
@@ -181,6 +226,8 @@ def run_remediation_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Remediation Agent failed: {e}")
         db.rollback()
+        if not llm_client.is_offline_mode():
+            raise e
         return {"remediation_draft_ids": []}
     finally:
         db.close()

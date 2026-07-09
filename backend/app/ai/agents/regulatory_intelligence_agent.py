@@ -45,6 +45,11 @@ def run_regulatory_intelligence(state: Dict[str, Any]) -> Dict[str, Any]:
     ]
 
     try:
+        logger.info(
+            f"[RegulatoryIntelligenceAgent] Calling LLM | "
+            f"mode={'online' if not llm_client.is_offline_mode() else 'offline'} | "
+            f"content_length={len(raw_content)}"
+        )
         # Call LLM client with validation model
         result: RegulatoryIntelligenceOutput = llm_client.get_completion(
             messages=messages,
