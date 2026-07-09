@@ -11,6 +11,14 @@ import type {
   TaskUpdatePayload,
 } from "@/types/api";
 
+export interface AIStatusResponse {
+  mode: "online" | "offline";
+  model: string | null;
+  embedding_model: string | null;
+  gemini_key_configured: boolean;
+  reason: string | null;
+}
+
 const API_BASE = "/api/v1";
 const DEFAULT_TENANT_ID = "9280d0d8-5527-4632-bd92-4fcf05c75462";
 
@@ -173,10 +181,13 @@ export function updateRemediation(
 }
 
 export function generateRemediationDrafts(
-  regulationId: string
+  regulationId: string,
+  documentIds?: string[]
 ): Promise<RemediationResponse[]> {
-  return sendJson(`/remediation/regulation/${regulationId}`, "POST");
+  const body = documentIds ? { document_ids: documentIds } : undefined;
+  return sendJson(`/remediation/regulation/${regulationId}`, "POST", body);
 }
+
 
 export function submitApprovalDecision(
   remediationId: string,
@@ -221,4 +232,25 @@ function triggerBlobDownload(blob: Blob, filename: string): void {
   anchor.click();
   anchor.remove();
   window.URL.revokeObjectURL(url);
+}
+
+export function syncTasksToJira(): Promise<{ message: string; jira_response: any }> {
+  return sendJson("/tasks/sync-jira", "POST");
+}
+
+export function generateImplementationTasks(
+  regulationId: string
+): Promise<{ requires_tasks: boolean; tasks: TaskResponse[]; message: string }> {
+  return sendJson("/tasks/generate", "POST", { regulation_id: regulationId });
+}
+
+export function updateRegulationStatus(
+  regulationId: string,
+  status: string
+): Promise<RegulationResponse> {
+  return sendJson(`/regulations/${regulationId}/status`, "PATCH", { status });
+}
+
+export function getAiStatus(): Promise<AIStatusResponse> {
+  return getJson<AIStatusResponse>("/ai-status");
 }

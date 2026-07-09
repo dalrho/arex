@@ -2,17 +2,16 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ArrowLeft, CheckCircle2, Link2, Loader2, PenLine, Play, RefreshCw, XCircle } from "lucide-react";
 import clsx from "clsx";
 import Modal from "@/components/ui/Modal";
-import ImplementationPlanSection from "@/components/remediation/ImplementationPlanSection";
 import StatusBadge from "@/components/ui/StatusBadge";
 import {
   getDocument,
   getRegulation,
   getRemediation,
   listRegulations,
-  listTasks,
   runImpactAssessment,
   submitApprovalDecision,
   updateRemediation,
@@ -41,11 +40,6 @@ function hostFor(url: string): string {
   }
 }
 
-function filterTasksForDraft(tasks: TaskResponse[], draft: RemediationResponse): TaskResponse[] {
-  const byDraft = tasks.filter((task) => task.remediation_draft_id === draft.id);
-  if (byDraft.length > 0) return byDraft;
-  return tasks.filter((task) => task.regulation_id === draft.regulation_id);
-}
 
 function statusFor(regulation: RegulationResponse, impact: ImpactResponse | null): string {
   if (impact?.regulation_id === regulation.id) return "Analysis Complete";
@@ -53,14 +47,13 @@ function statusFor(regulation: RegulationResponse, impact: ImpactResponse | null
 }
 
 export default function RemediationReviewPage({ params }: { params: { id: string } }) {
+  const router = useRouter();
   const [draft, setDraft] = useState<RemediationResponse | null>(null);
   const [document, setDocument] = useState<DocumentResponse | null>(null);
   const [regulation, setRegulation] = useState<RegulationResponse | null>(null);
   const [regulations, setRegulations] = useState<RegulationResponse[]>(demoRegulations);
-  const [tasks, setTasks] = useState<TaskResponse[]>([]);
   const [impact, setImpact] = useState<ImpactResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tasksLoading, setTasksLoading] = useState(true);
   const [regulationsLoading, setRegulationsLoading] = useState(false);
   const [assessing, setAssessing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -86,7 +79,6 @@ export default function RemediationReviewPage({ params }: { params: { id: string
 
     async function load() {
       setLoading(true);
-      setTasksLoading(true);
       let nextDraft: RemediationResponse;
       try {
         nextDraft = await getRemediation(params.id);
@@ -112,20 +104,6 @@ export default function RemediationReviewPage({ params }: { params: { id: string
             setRegulation(demoRegulations.find((reg) => reg.id === nextDraft.regulation_id) ?? demoRegulations[0])
         );
 
-      try {
-        const rows = await listTasks();
-        if (!cancelled) {
-          const source = rows.length > 0 ? rows : demoTasks;
-          setTasks(filterTasksForDraft(source, nextDraft));
-        }
-      } catch {
-        if (!cancelled) {
-          setTasks(filterTasksForDraft(demoTasks, nextDraft));
-        }
-      } finally {
-        if (!cancelled) setTasksLoading(false);
-      }
-
       void loadRegulations();
       setLoading(false);
     }
@@ -142,19 +120,19 @@ export default function RemediationReviewPage({ params }: { params: { id: string
     setMessage(null);
     try {
       await submitApprovalDecision(draft.id, decision);
+      if (decision === "APPROVED") {
+        router.push(`/regulations?success_msg=${encodeURIComponent("Remediation draft approved successfully. Document version updated.")}`);
+      } else {
+        router.push("/regulations");
+      }
     } catch {
-      // Local fallback keeps the demo flow moving when the API is not running.
+      // Local fallback for demo
+      if (decision === "APPROVED") {
+        router.push(`/regulations?success_msg=${encodeURIComponent("Remediation draft approved successfully (offline demo). Document version updated.")}`);
+      } else {
+        router.push("/regulations");
+      }
     } finally {
-      setDraft((current) =>
-        current
-          ? {
-              ...current,
-              status: decision,
-              reviewed_at: new Date().toISOString(),
-            }
-          : current
-      );
-      setMessage(decision === "APPROVED" ? "Draft approved. Export package is ready." : "Draft rejected.");
       setSubmitting(false);
     }
   }
@@ -214,10 +192,6 @@ export default function RemediationReviewPage({ params }: { params: { id: string
               <div className="mt-8 space-y-10">
                 <DraftCard draft={draft} document={document} regulation={regulation} />
 
-                <section>
-                  <h2 className="mb-6 text-2xl font-extrabold text-white">Implementation Plan</h2>
-                  <ImplementationPlanSection tasks={tasks} loading={tasksLoading} />
-                </section>
 
                 {message && (
                   <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-200">
@@ -235,7 +209,7 @@ export default function RemediationReviewPage({ params }: { params: { id: string
               <button
                 type="button"
                 onClick={() => void handleDecision("APPROVED")}
-                disabled={submitting || draft.status === "APPROVED"}
+                disabled={submitting || draft.status === "APPROVED" || regulation?.status === "Closed"}
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-emerald-700 px-6 text-sm font-bold text-white hover:bg-emerald-600 disabled:opacity-60"
               >
                 <CheckCircle2 className="h-4 w-4" />
@@ -244,7 +218,7 @@ export default function RemediationReviewPage({ params }: { params: { id: string
               <button
                 type="button"
                 onClick={openEditModal}
-                disabled={submitting}
+                disabled={submitting || regulation?.status === "Closed"}
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-6 text-sm font-bold text-white hover:bg-blue-500 disabled:opacity-60"
               >
                 <PenLine className="h-4 w-4" />
@@ -253,15 +227,12 @@ export default function RemediationReviewPage({ params }: { params: { id: string
               <button
                 type="button"
                 onClick={() => void handleDecision("REJECTED")}
-                disabled={submitting || draft.status === "REJECTED"}
+                disabled={submitting || draft.status === "REJECTED" || regulation?.status === "Closed"}
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-red-700 px-6 text-sm font-bold text-white hover:bg-red-600 disabled:opacity-60"
               >
                 <XCircle className="h-4 w-4" />
                 Reject
               </button>
-              <Link href="/exports" className="inline-flex h-10 items-center justify-center px-2 text-sm font-semibold text-slate-300 hover:text-white">
-                Skip this
-              </Link>
             </div>
           </div>
         )}
@@ -401,6 +372,10 @@ function RegulationRail({
         {regulations.map((item) => {
           const active = item.id === selectedId;
           const analyzed = impact?.regulation_id === item.id || item.status === "ANALYSIS_COMPLETE";
+          const isUnopened = item.status === "Not Analyzed" || item.status === "pending_analysis";
+          const isClosed = item.status === "Closed";
+          const badgeLabel = isClosed ? "Closed Case" : (isUnopened ? "Unopened" : "Active Case");
+          const badgeTone = isClosed ? "emerald" : (isUnopened ? "slate" : "blue");
           return (
             <article
               key={item.id}
@@ -415,11 +390,11 @@ function RegulationRail({
                 {hostFor(item.source_url)}
               </p>
               <div className="mt-3 flex items-center justify-between gap-3">
-                <StatusBadge label={analyzed ? "Analysis Complete" : statusFor(item, impact)} tone={analyzed ? "emerald" : "amber"} />
+                <StatusBadge label={badgeLabel} tone={badgeTone} />
                 <button
                   type="button"
                   onClick={() => onRun(item)}
-                  disabled={assessing}
+                  disabled={assessing || isClosed}
                   className="inline-flex h-7 items-center gap-1.5 rounded-md bg-blue-600 px-3 text-[11px] font-bold text-white hover:bg-blue-500 disabled:opacity-60"
                 >
                   {assessing && active ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3 fill-white" />}

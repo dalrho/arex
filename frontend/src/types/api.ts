@@ -20,6 +20,13 @@ export interface DocumentResponse {
   created_at: string;
 }
 
+export interface AuditHistoryEvent {
+  event_type: string;
+  description: string;
+  timestamp: string;
+  user: string;
+}
+
 export interface RegulationResponse {
   id: string;
   source_url: string;
@@ -35,6 +42,16 @@ export interface RegulationResponse {
   urgency?: string | null;
   affected_business_areas?: string[] | null;
   rationale?: string | null;
+  audit_history?: AuditHistoryEvent[] | null;
+}
+
+export interface AffectedDocument {
+  document_id: string;
+  document_name: string;
+  document_type: string;
+  affected_sections: string;
+  explanation: string;
+  confidence_score: number;
 }
 
 export interface ImpactResponse {
@@ -47,6 +64,7 @@ export interface ImpactResponse {
   affected_departments: string[];
   status: string;
   created_at: string;
+  affected_documents?: AffectedDocument[];
 }
 
 export interface DiffContent {
@@ -67,7 +85,10 @@ export interface RemediationResponse {
   reviewer_id: string | null;
   reviewed_at: string | null;
   created_at: string;
+  explanation?: string | null;
+  requires_tasks?: boolean | null;
 }
+
 
 export interface ApprovalRecordResponse {
   id: string;
