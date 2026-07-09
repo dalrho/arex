@@ -8,6 +8,15 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      spacing: {
+        "shell-header": "4.5rem",
+        "shell-sidebar": "15rem",
+        "shell-rail": "20rem",
+      },
+      fontSize: {
+        "page-title": ["1.5rem", { lineHeight: "2rem", fontWeight: "800" }],
+        "page-title-lg": ["1.75rem", { lineHeight: "2.25rem", fontWeight: "800" }],
+      },
       colors: {
         // Tailored color system: Professional compliance slate/navy theme
         brand: {

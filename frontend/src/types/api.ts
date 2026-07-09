@@ -1,6 +1,3 @@
-// Hand-written TypeScript mirrors of the backend Pydantic schemas
-// (backend/app/api/v1/schemas/*). Keep in sync with the API.
-
 export interface AuthUser {
   id: string;
   email: string;
@@ -33,10 +30,9 @@ export interface RegulationResponse {
   hash_value: string;
   status: string;
   created_at: string;
-  // AI agent verdicts
   relevant?: boolean | null;
   category?: string | null;
-  urgency?: string | null; // "low" | "medium" | "high" | "critical"
+  urgency?: string | null;
   affected_business_areas?: string[] | null;
   rationale?: string | null;
 }
@@ -113,34 +109,4 @@ export interface TaskUpdatePayload {
   department?: string;
   priority?: string;
   status?: string;
-}
-
-export interface UserResponse {
-  id: string;
-  email: string;
-  role: string;
-  created_at: string;
-}
-
-export type DashboardActivityType =
-  | "document_uploaded"
-  | "regulation_monitored"
-  | "remediation_approved"
-  | "remediation_rejected";
-
-export interface DashboardActivity {
-  type: DashboardActivityType | string;
-  message: string;
-  timestamp: string;
-  meta: Record<string, string>;
-}
-
-export interface DashboardMetrics {
-  total_documents: number;
-  total_regulations: number;
-  pending_assessments: number;
-  pending_remediations: number;
-  open_tasks: number;
-  max_risk_score: number;
-  recent_activity: DashboardActivity[];
 }

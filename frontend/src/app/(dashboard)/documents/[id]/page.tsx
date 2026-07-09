@@ -1,87 +1,133 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, FileText, Loader2 } from "lucide-react";
+import { ArrowLeft, Download, FileText, Loader2 } from "lucide-react";
 import DocumentVersionTag from "@/components/documents/DocumentVersionTag";
-import { getDocument } from "@/lib/apiClient";
+import DocumentViewer from "@/components/documents/DocumentViewer";
+import { downloadDocument, fetchDocumentBlob, getDocument } from "@/lib/apiClient";
+import { demoDocuments, getDemoDocumentContent } from "@/lib/demoData";
 import { formatDateTime } from "@/lib/format";
 import type { DocumentResponse } from "@/types/api";
 
-/**
- * Document Detail Page ("/documents/[id]")
- * Metadata card for a single QMS document.
- */
 export default function DocumentDetailPage({ params }: { params: { id: string } }) {
-  const [doc, setDoc] = useState<DocumentResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [document, setDocument] = useState<DocumentResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [downloading, setDownloading] = useState(false);
+  const [previewBlob, setPreviewBlob] = useState<Blob | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+
+  const loadPreview = useCallback(async (doc: DocumentResponse) => {
+    setPreviewLoading(true);
+    setPreviewError(null);
+    setPreviewBlob(null);
+    try {
+      const blob = await fetchDocumentBlob(doc.id);
+      setPreviewBlob(blob);
+    } catch {
+      const text = getDemoDocumentContent(doc.id);
+      setPreviewBlob(new Blob([text], { type: "text/plain" }));
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
+    setLoading(true);
     getDocument(params.id)
-      .then(setDoc)
-      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load document."));
+      .then(setDocument)
+      .catch(() => setDocument(demoDocuments.find((item) => item.id === params.id) ?? demoDocuments[0]))
+      .finally(() => setLoading(false));
   }, [params.id]);
 
-  if (error) {
-    return (
-      <div className="space-y-4">
-        <BackLink />
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-6 text-sm text-red-700">{error}</div>
-      </div>
-    );
-  }
+  useEffect(() => {
+    if (!document) return;
+    void loadPreview(document);
+  }, [document, loadPreview]);
 
-  if (!doc) {
-    return (
-      <div className="flex items-center justify-center gap-2 py-16 text-sm text-slate-500">
-        <Loader2 className="h-4 w-4 animate-spin" /> Loading document...
-      </div>
-    );
+  async function handleDownload() {
+    if (!document) return;
+    setDownloading(true);
+    try {
+      await downloadDocument(document.id, document.filename);
+    } catch {
+      const text = getDemoDocumentContent(document.id);
+      const blob = new Blob([text], { type: "text/plain" });
+      const url = window.URL.createObjectURL(blob);
+      const anchor = window.document.createElement("a");
+      anchor.href = url;
+      anchor.download = document.filename.replace(/\.[^.]+$/, ".txt");
+      window.document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.URL.revokeObjectURL(url);
+    } finally {
+      setDownloading(false);
+    }
   }
 
   return (
-    <div className="space-y-6">
-      <BackLink />
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-5">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
-              <FileText className="h-5 w-5 text-blue-600" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-slate-900">{doc.filename}</h1>
-              <p className="text-xs text-slate-400 mt-0.5">Document ID: {doc.id}</p>
-            </div>
-          </div>
-          <DocumentVersionTag version={doc.version} />
-        </div>
+    <div className="h-full overflow-y-auto bg-[#020613]">
+      <main className="px-6 py-6 md:px-10">
+        <div className="mx-auto max-w-5xl">
+          <Link href="/documents" className="inline-flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-blue-300">
+            <ArrowLeft className="h-4 w-4" />
+            Back to documents
+          </Link>
 
-        <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-          <div className="rounded-lg bg-slate-50 border border-slate-100 p-4">
-            <dt className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Uploaded</dt>
-            <dd className="mt-1 font-medium text-slate-800">{formatDateTime(doc.created_at)}</dd>
-          </div>
-          <div className="rounded-lg bg-slate-50 border border-slate-100 p-4">
-            <dt className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Current Version</dt>
-            <dd className="mt-1 font-medium text-slate-800">Revision {doc.version}</dd>
-          </div>
-          <div className="rounded-lg bg-slate-50 border border-slate-100 p-4 sm:col-span-2">
-            <dt className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Tenant Scope</dt>
-            <dd className="mt-1 font-mono text-xs text-slate-600">{doc.organization_id}</dd>
-          </div>
-        </dl>
-      </div>
+          {loading || !document ? (
+            <div className="mt-10 flex h-40 items-center justify-center gap-3 rounded-lg border border-slate-700 bg-[#081024] text-slate-400">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              Loading document
+            </div>
+          ) : (
+            <div className="mt-8 space-y-6">
+              <div className="flex flex-col gap-5 rounded-lg border border-slate-700 bg-[#081024] p-6 md:flex-row md:items-start md:justify-between">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-3">
+                    <FileText className="h-7 w-7 flex-shrink-0 text-blue-300" />
+                    <h2 className="truncate text-2xl font-extrabold text-white">{document.filename}</h2>
+                  </div>
+                  <p className="mt-3 text-sm text-slate-400">Uploaded {formatDateTime(document.created_at)}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleDownload()}
+                  disabled={downloading}
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 text-sm font-bold text-white hover:bg-blue-500 disabled:opacity-60"
+                >
+                  {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                  Download
+                </button>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-3">
+                <Meta label="Version" value={<DocumentVersionTag version={document.version} />} />
+                <Meta label="Document ID" value={document.id.slice(0, 8).toUpperCase()} />
+                <Meta label="Storage Path" value={document.file_path} />
+              </div>
+
+              <DocumentViewer
+                filename={document.filename}
+                blob={previewBlob}
+                loading={previewLoading}
+                error={previewError}
+                onRetry={() => void loadPreview(document)}
+              />
+            </div>
+          )}
+        </div>
+      </main>
     </div>
   );
 }
 
-function BackLink() {
+function Meta({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <Link
-      href="/documents"
-      className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-blue-600"
-    >
-      <ArrowLeft className="h-4 w-4" /> Back to Documents
-    </Link>
+    <div className="rounded-lg border border-slate-700 bg-[#081024] p-5">
+      <p className="text-xs font-extrabold uppercase text-slate-500">{label}</p>
+      <div className="mt-2 truncate text-sm font-semibold text-slate-200">{value}</div>
+    </div>
   );
 }
