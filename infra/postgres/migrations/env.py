@@ -27,6 +27,8 @@ from app.models.impact_assessment import ImpactAssessment  # noqa: F401
 from app.models.remediation_draft import RemediationDraft  # noqa: F401
 from app.models.implementation_task import ImplementationTask  # noqa: F401
 from app.models.approval_record import ApprovalRecord  # noqa: F401
+from app.models.document_version import DocumentVersion  # noqa: F401
+
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

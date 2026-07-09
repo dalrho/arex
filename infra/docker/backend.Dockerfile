@@ -22,10 +22,13 @@ RUN pip install "poetry==$POETRY_VERSION"
 WORKDIR /app
 
 # Copy configuration and dependency manifest
-COPY backend/pyproject.toml ./
+COPY backend/pyproject.toml backend/poetry.lock* ./
 
 # Install python dependencies
 RUN poetry install --no-root
+
+# Install google-genai (Gemini AI SDK) — required for Online AI Mode
+RUN pip install google-genai
 
 # Copy application code to workspace
 COPY backend/app ./app
