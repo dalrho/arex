@@ -14,7 +14,9 @@ class ImpactAssessment(Base):
     impact_level: Mapped[str] = mapped_column(String(50), nullable=False)  # Low | Medium | High
     rationale: Mapped[str] = mapped_column(Text, nullable=False)
     affected_departments: Mapped[list[str]] = mapped_column(JSON, nullable=False)  # list of department names
+    affected_documents: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)
     status: Mapped[str] = mapped_column(String(50), default="pending", nullable=False)  # pending | reviewed
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

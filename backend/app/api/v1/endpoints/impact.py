@@ -72,6 +72,21 @@ def trigger_impact_assessment(
             organization_id=org_id,
             db=db
         )
+        
+        # Update case status
+        reg.status = "Impact Assessment Complete"
+        db.add(reg)
+        db.commit()
+        
+        # Log audit events
+        from app.core.audit import add_audit_event
+        add_audit_event(db, regulation_id, "impact_assessment_completed", "Compliance impact assessment completed successfully.")
+        
+        if assessment.affected_documents:
+            doc_names = [d["document_name"] for d in assessment.affected_documents]
+            doc_str = ", ".join(doc_names) if doc_names else "None"
+            add_audit_event(db, regulation_id, "documents_identified", f"Identified affected documents: {doc_str}.")
+            
         return assessment
     except Exception as e:
         raise HTTPException(
