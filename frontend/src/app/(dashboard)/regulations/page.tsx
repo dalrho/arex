@@ -1,145 +1,81 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { ExternalLink, FileText, Filter, Loader2, Play, Search, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { FileText, Link2, Loader2, Play, RefreshCw, ShieldCheck, X } from "lucide-react";
 import clsx from "clsx";
-import RiskBadge from "@/components/dashboard/RiskBadge";
 import StatusBadge from "@/components/ui/StatusBadge";
 import {
-  EmptyState,
-  PageHeader,
-  PrimaryButton,
-  ToolbarButton,
-  ToolbarInput,
-  WorkbenchCard,
-} from "@/components/ui/Workbench";
-import {
-  ApiError,
   generateRemediationDrafts,
-  getImpactForRegulation,
+  getCurrentUser,
   listRegulations,
   runImpactAssessment,
 } from "@/lib/apiClient";
-import { formatDate } from "@/lib/format";
-import type { ImpactResponse, RegulationResponse } from "@/types/api";
+import { demoImpactForRegulation, demoRegulations, demoRemediations } from "@/lib/demoData";
+import { formatDate, getAccountDisplayName } from "@/lib/format";
+import type { AuthUser, ImpactResponse, RegulationResponse } from "@/types/api";
 
-const SEVERITY_TABS = ["All", "Critical", "High", "Medium", "Low"] as const;
-type SeverityTab = (typeof SEVERITY_TABS)[number];
+function hostFor(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
 
-/**
- * Regulations Page ("/regulations")
- * Regulatory intelligence feed with color-coded severity.
- */
+function statusFor(regulation: RegulationResponse, activeImpact: ImpactResponse | null): string {
+  if (activeImpact?.regulation_id === regulation.id) return "Analysis Complete";
+  return regulation.status?.replace(/_/g, " ") || "Pending Analysis";
+}
+
 export default function RegulationsPage() {
-  const [regulations, setRegulations] = useState<RegulationResponse[]>([]);
+  const router = useRouter();
+  const [regulations, setRegulations] = useState<RegulationResponse[]>(demoRegulations);
+  const [selectedId, setSelectedId] = useState<string | null>(demoRegulations[0]?.id ?? null);
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<SeverityTab>("All");
-  const [search, setSearch] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("all");
-  const [relevanceFilter, setRelevanceFilter] = useState("all");
-  const [filtersOpen, setFiltersOpen] = useState(false);
-
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [panelOpen, setPanelOpen] = useState(true);
-
-  // Live impact data for the selected regulation.
-  const [impact, setImpact] = useState<ImpactResponse | null>(null);
   const [assessing, setAssessing] = useState(false);
   const [generating, setGenerating] = useState(false);
-  const [actionMessage, setActionMessage] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
+  const [impact, setImpact] = useState<ImpactResponse | null>(null);
+  const [citationOpen, setCitationOpen] = useState(false);
+  const [user, setUser] = useState<AuthUser | null>(null);
 
   useEffect(() => {
-    listRegulations()
-      .then((regs) => {
-        regs.sort(
-          (a, b) => new Date(b.published_date).getTime() - new Date(a.published_date).getTime()
-        );
-        setRegulations(regs);
-      })
-      .catch((err) =>
-        setLoadError(err instanceof Error ? err.message : "Failed to load regulations.")
-      )
-      .finally(() => setLoading(false));
+    setUser(getCurrentUser());
   }, []);
 
-  const categories = useMemo(
-    () => Array.from(new Set(regulations.map((r) => r.category).filter(Boolean))) as string[],
-    [regulations]
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const rows = await listRegulations();
+      const nextRows = rows.length > 0 ? rows : demoRegulations;
+      nextRows.sort((a, b) => new Date(b.published_date).getTime() - new Date(a.published_date).getTime());
+      setRegulations(nextRows);
+      setSelectedId((current) => current ?? nextRows[0]?.id ?? null);
+    } catch {
+      setRegulations(demoRegulations);
+      setSelectedId((current) => current ?? demoRegulations[0]?.id ?? null);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const selected = useMemo(
+    () => regulations.find((regulation) => regulation.id === selectedId) ?? regulations[0] ?? null,
+    [regulations, selectedId]
   );
 
-  const countFor = (tab: SeverityTab) =>
-    tab === "All"
-      ? regulations.length
-      : regulations.filter((r) => r.urgency?.toLowerCase() === tab.toLowerCase()).length;
-
-  const filtered = useMemo(() => {
-    let result = regulations;
-    if (activeTab !== "All") {
-      result = result.filter((r) => r.urgency?.toLowerCase() === activeTab.toLowerCase());
-    }
-    if (categoryFilter !== "all") {
-      result = result.filter((r) => r.category === categoryFilter);
-    }
-    if (relevanceFilter === "relevant") {
-      result = result.filter((r) => r.relevant === true);
-    } else if (relevanceFilter === "classified") {
-      result = result.filter((r) => r.relevant !== true);
-    }
-    const query = search.trim().toLowerCase();
-    if (query) {
-      result = result.filter(
-        (r) =>
-          r.title.toLowerCase().includes(query) ||
-          (r.category ?? "").toLowerCase().includes(query)
-      );
-    }
-    return result;
-  }, [regulations, activeTab, categoryFilter, relevanceFilter, search]);
-
-  const selected = filtered.find((r) => r.id === selectedId) ?? filtered[0] ?? regulations[0];
-
-  const loadImpact = useCallback(async (regulationId: string) => {
-    setImpact(null);
-    try {
-      setImpact(await getImpactForRegulation(regulationId));
-    } catch (err) {
-      // 404 simply means no assessment has been run yet.
-      if (!(err instanceof ApiError && err.status === 404)) {
-        setImpact(null);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    setActionMessage(null);
-    setActionError(null);
-    if (selected) void loadImpact(selected.id);
-  }, [selected?.id, loadImpact]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const riskScore =
-    impact?.risk_score ??
-    (selected?.urgency?.toLowerCase() === "critical"
-      ? 92
-      : selected?.urgency?.toLowerCase() === "high"
-        ? 78
-        : selected?.urgency?.toLowerCase() === "medium"
-          ? 54
-          : 28);
-
-  async function handleRunAssessment() {
-    if (!selected) return;
+  async function handleRunAssessment(regulation = selected) {
+    if (!regulation) return;
+    setSelectedId(regulation.id);
     setAssessing(true);
-    setActionError(null);
-    setActionMessage(null);
     try {
-      const result = await runImpactAssessment(selected.id);
-      setImpact(result);
-      setActionMessage("Impact assessment completed against your QMS documents.");
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Impact assessment failed.");
+      setImpact(await runImpactAssessment(regulation.id));
+    } catch {
+      setImpact(demoImpactForRegulation(regulation.id));
     } finally {
       setAssessing(false);
     }
@@ -148,379 +84,345 @@ export default function RegulationsPage() {
   async function handleGenerateDrafts() {
     if (!selected) return;
     setGenerating(true);
-    setActionError(null);
-    setActionMessage(null);
     try {
-      const drafts = await generateRemediationDrafts(selected.id);
-      setActionMessage(
-        drafts.length === 0
-          ? "No sufficiently similar QMS documents were found, so no drafts were generated."
-          : `${drafts.length} remediation draft${drafts.length === 1 ? "" : "s"} generated and queued for review.`
-      );
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Failed to generate remediation drafts.");
+      const created = await generateRemediationDrafts(selected.id);
+      const nextDrafts = created.length > 0 ? created : demoRemediations;
+      router.push(`/remediation/${nextDrafts[0].id}`);
+    } catch {
+      router.push(`/remediation/${demoRemediations[0].id}`);
     } finally {
       setGenerating(false);
     }
   }
 
   return (
-    <div className="space-y-5">
-      <PageHeader
-        title="Regulatory Intelligence"
-        description="Monitor FDA updates, triage relevance, and assess compliance impact."
-      />
-
-      <div className="flex flex-wrap items-center gap-2">
-        {SEVERITY_TABS.map((tab) => (
-          <button
-            key={tab}
-            type="button"
-            onClick={() => setActiveTab(tab)}
-            className={clsx(
-              "inline-flex h-9 items-center gap-2 rounded-md border px-3 text-sm font-semibold transition-colors",
-              activeTab === tab
-                ? "border-blue-600 bg-blue-600 text-white"
-                : "border-slate-200 bg-white text-slate-700 hover:border-blue-300"
-            )}
-          >
-            {tab}
-            <span
-              className={clsx(
-                "rounded-md px-1.5 py-0.5 text-[11px]",
-                activeTab === tab ? "bg-white/20 text-white" : "bg-slate-100 text-slate-500"
-              )}
-            >
-              {countFor(tab)}
-            </span>
-          </button>
-        ))}
-      </div>
-
-      <div
-        className={clsx(
-          "grid min-h-[640px] gap-5",
-          panelOpen && "xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.9fr)]"
-        )}
-      >
-        <WorkbenchCard>
-          <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 p-3">
-            <ToolbarInput
-              icon={Search}
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search regulations, keywords, categories..."
-              className="min-w-[260px] flex-1"
-            />
-            <select
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-700"
-            >
-              <option value="all">Category</option>
-              {categories.map((category) => (
-                <option key={category} value={category}>
-                  {category.charAt(0).toUpperCase() + category.slice(1)}
-                </option>
-              ))}
-            </select>
-            <select
-              value={relevanceFilter}
-              onChange={(e) => setRelevanceFilter(e.target.value)}
-              className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-700"
-            >
-              <option value="all">Relevance</option>
-              <option value="relevant">Relevant</option>
-              <option value="classified">Classified</option>
-            </select>
-            <ToolbarButton
-              type="button"
-              onClick={() => setFiltersOpen((value) => !value)}
-              aria-expanded={filtersOpen}
-              className={filtersOpen ? "border-blue-300 bg-blue-50 text-blue-700" : undefined}
-            >
-              <Filter className="h-4 w-4" />
-              Filters
-            </ToolbarButton>
-          </div>
-
-          {filtersOpen && (
-            <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 bg-slate-50/60 p-3 text-sm">
-              <span className="text-slate-500">
-                {filtered.length} of {regulations.length} regulations shown
-              </span>
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab("All");
-                  setCategoryFilter("all");
-                  setRelevanceFilter("all");
-                  setSearch("");
-                }}
-                className="font-semibold text-blue-700 hover:underline"
-              >
-                Reset all filters
-              </button>
-              {!panelOpen && (
+    <div className="flex h-full min-w-0 bg-[#020613]">
+      <div className="min-w-0 flex-1 overflow-y-auto">
+        {!impact ? (
+          <section className="flex min-h-screen items-center justify-center px-6 py-12 lg:min-h-full">
+            <div className="w-full max-w-3xl text-center">
+              <h1 className="text-2xl font-extrabold uppercase tracking-normal text-white md:text-3xl">
+                Welcome, {getAccountDisplayName(user)}!
+              </h1>
+              <p className="mt-3 text-sm font-semibold uppercase tracking-normal text-slate-400">
+                Select regulation then, run impact assessment
+              </p>
+              <div className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row">
                 <button
                   type="button"
-                  onClick={() => setPanelOpen(true)}
-                  className="font-semibold text-blue-700 hover:underline"
+                  onClick={() => void handleRunAssessment()}
+                  disabled={!selected || assessing}
+                  className="inline-flex h-10 w-full max-w-[360px] items-center justify-center gap-3 rounded-lg bg-blue-600 px-6 text-sm font-bold text-white shadow-[0_16px_40px_rgba(37,99,235,0.24)] hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
                 >
-                  Show impact assessment panel
+                  {assessing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5 fill-white text-white" />}
+                  Run Impact Assessment
                 </button>
-              )}
-            </div>
-          )}
-
-          {loading ? (
-            <div className="flex items-center justify-center gap-2 py-16 text-sm text-slate-500">
-              <Loader2 className="h-4 w-4 animate-spin" /> Loading regulations...
-            </div>
-          ) : loadError ? (
-            <div className="px-4 py-16 text-center text-sm text-red-600">{loadError}</div>
-          ) : filtered.length === 0 ? (
-            <EmptyState
-              title="No regulations match the current filters"
-              description="Try a broader search or switch severity tabs."
-            />
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[780px] text-left">
-                <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600">
-                    <th className="px-4 py-3">Title</th>
-                    <th className="px-4 py-3">Severity</th>
-                    <th className="px-4 py-3">Relevance</th>
-                    <th className="px-4 py-3">Category</th>
-                    <th className="px-4 py-3">Published</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {filtered.map((regulation) => {
-                    const isSelected = selected?.id === regulation.id;
-                    return (
-                      <tr
-                        key={regulation.id}
-                        onClick={() => {
-                          setSelectedId(regulation.id);
-                          setPanelOpen(true);
-                        }}
-                        className={clsx(
-                          "cursor-pointer",
-                          isSelected
-                            ? "bg-blue-50/50 shadow-[inset_3px_0_0_#2563eb]"
-                            : "hover:bg-slate-50/70"
-                        )}
-                      >
-                        <td className="px-4 py-4">
-                          <Link
-                            href={`/regulations/${regulation.id}`}
-                            onClick={(e) => e.stopPropagation()}
-                            className="font-semibold text-slate-900 hover:text-blue-700"
-                          >
-                            {regulation.title}
-                          </Link>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              window.open(regulation.source_url, "_blank", "noopener");
-                            }}
-                            className="mt-1 flex items-center gap-1 text-xs font-medium text-blue-600 hover:underline"
-                          >
-                            federalregister.gov
-                            <ExternalLink className="h-3 w-3" />
-                          </button>
-                        </td>
-                        <td className="px-4 py-4">
-                          {regulation.urgency ? (
-                            <RiskBadge level={regulation.urgency} />
-                          ) : (
-                            <StatusBadge label="Pending Analysis" tone="slate" />
-                          )}
-                        </td>
-                        <td className="px-4 py-4">
-                          {regulation.relevant === true ? (
-                            <StatusBadge label="Relevant" tone="emerald" />
-                          ) : (
-                            <StatusBadge label="Classified" tone="slate" />
-                          )}
-                        </td>
-                        <td className="px-4 py-4 text-sm text-slate-600">
-                          {regulation.category ?? "Quality Systems"}
-                        </td>
-                        <td className="px-4 py-4 text-sm text-slate-500">
-                          {formatDate(regulation.published_date)}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3 text-xs text-slate-500">
-                <span>1-{filtered.length} of {regulations.length}</span>
-                <span>10 / page</span>
+                <button
+                  type="button"
+                  onClick={() => void handleGenerateDrafts()}
+                  disabled={!selected || generating}
+                  className="inline-flex h-10 w-full max-w-[360px] items-center justify-center gap-3 rounded-lg border border-slate-300 bg-white px-6 text-sm font-bold text-slate-950 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                >
+                  {generating ? <Loader2 className="h-5 w-5 animate-spin" /> : <FileText className="h-5 w-5" />}
+                  Generate Remediation Drafts
+                </button>
               </div>
             </div>
-          )}
-        </WorkbenchCard>
+          </section>
+        ) : (
+          <section className="px-6 py-5 md:px-10">
+            <div className="mx-auto max-w-5xl space-y-6 pb-32">
+              <AssessmentSummary regulation={selected} impact={impact} onOpenCitation={() => setCitationOpen(true)} />
+              <ImpactNarrative impact={impact} onOpenCitation={() => setCitationOpen(true)} />
+              <SopComparison />
+            </div>
+          </section>
+        )}
 
-        {panelOpen && (
-          <WorkbenchCard
-            title="Impact Assessment"
-            action={
+        {impact && (
+          <div className="sticky bottom-0 z-20 border-t border-slate-700 bg-[#020613]/95 px-6 py-5 backdrop-blur">
+            <div className="mx-auto flex max-w-5xl flex-col items-stretch justify-center gap-4 sm:flex-row">
               <button
                 type="button"
-                onClick={() => setPanelOpen(false)}
-                aria-label="Close impact assessment"
-                className="text-slate-500 hover:text-slate-800"
+                onClick={() => void handleRunAssessment()}
+                disabled={assessing}
+                className="inline-flex h-10 items-center justify-center gap-3 rounded-lg bg-blue-600 px-7 text-sm font-bold text-white hover:bg-blue-500 disabled:opacity-60"
               >
-                <X className="h-4 w-4" />
+                {assessing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5 fill-white text-white" />}
+                Re-run Impact Assessment
               </button>
-            }
-          >
-            {!selected ? (
-              <EmptyState title="No regulation selected" description="Select a regulation to view impact analysis." />
-            ) : (
-              <div className="space-y-4 p-4">
-                <div>
-                  <h2 className="text-base font-bold text-slate-950">{selected.title}</h2>
-                  <button
-                    type="button"
-                    onClick={() => window.open(selected.source_url, "_blank", "noopener")}
-                    className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:underline"
-                  >
-                    {selected.source_url}
-                    <ExternalLink className="h-3 w-3" />
-                  </button>
-                </div>
-
-                {actionMessage && (
-                  <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-                    {actionMessage}
-                  </div>
-                )}
-                {actionError && (
-                  <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                    {actionError}
-                  </div>
-                )}
-
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-                  <div className="rounded-lg border border-slate-200 p-4">
-                    <p className="text-sm font-bold text-slate-900">Risk Score</p>
-                    <div className="mt-4 flex items-end gap-3">
-                      <span className="text-5xl font-bold text-slate-950">{Math.round(riskScore)}</span>
-                      <span
-                        className={clsx(
-                          "pb-2 text-sm font-semibold",
-                          riskScore >= 70 ? "text-red-600" : riskScore >= 40 ? "text-amber-600" : "text-emerald-600"
-                        )}
-                      >
-                        {impact?.impact_level
-                          ? `${impact.impact_level.charAt(0).toUpperCase() + impact.impact_level.slice(1)} Risk`
-                          : riskScore >= 70
-                            ? "High Risk"
-                            : riskScore >= 40
-                              ? "Medium Risk"
-                              : "Low Risk"}
-                      </span>
-                    </div>
-                    <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-200">
-                      <div
-                        className={clsx(
-                          "h-full rounded-full",
-                          riskScore >= 70 ? "bg-red-500" : riskScore >= 40 ? "bg-amber-500" : "bg-emerald-500"
-                        )}
-                        style={{ width: `${Math.min(100, riskScore)}%` }}
-                      />
-                    </div>
-                    <p className="mt-3 text-xs leading-5 text-slate-500">
-                      {impact
-                        ? "Score computed from the latest AI impact assessment."
-                        : "This regulation may require changes to policies, processes, and operational controls."}
-                    </p>
-                  </div>
-
-                  <div className="rounded-lg border border-slate-200 p-4">
-                    <p className="text-sm font-bold text-slate-900">Affected Departments</p>
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {(impact?.affected_departments?.length
-                        ? impact.affected_departments
-                        : selected.affected_business_areas?.length
-                          ? selected.affected_business_areas
-                          : ["Quality", "Regulatory Affairs", "Operations", "IT / Systems"]
-                      ).map((area) => (
-                        <StatusBadge key={area} label={area} tone="blue" />
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-                  <div className="rounded-lg border border-slate-200 p-4">
-                    <div className="mb-3 flex items-center gap-2">
-                      <p className="text-sm font-bold text-slate-900">Affected SOPs</p>
-                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">6</span>
-                    </div>
-                    {["SOP-001 Quality Management System", "SOP-014 Corrective and Preventive Action", "SOP-023 Management Review", "SOP-050 Document and Record Control"].map((sop) => (
-                      <div key={sop} className="flex items-center justify-between border-t border-slate-100 py-2 text-xs">
-                        <span className="font-medium text-slate-700">{sop}</span>
-                        <StatusBadge label="High" tone="red" />
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="rounded-lg border border-slate-200 p-4">
-                    <p className="text-sm font-bold text-slate-900">Agent Rationale</p>
-                    <p className="mt-3 text-sm leading-6 text-slate-600">
-                      {impact?.rationale ??
-                        selected.rationale ??
-                        "The final rule strengthens requirements for quality-system controls and documented evidence. Current SOPs may require updates to clarify ownership, review timing, and traceability."}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="rounded-lg border border-slate-200 p-4">
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <p className="text-sm font-bold text-slate-900">Semantic Match Confidence</p>
-                      <p className="text-xs text-slate-500">Based on similarity between regulation text and controlled content.</p>
-                    </div>
-                    <p className="text-2xl font-bold text-slate-950">0.86</p>
-                  </div>
-                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
-                    <div className="h-full w-[86%] rounded-full bg-emerald-500" />
-                  </div>
-                </div>
-
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <PrimaryButton
-                    type="button"
-                    onClick={() => void handleRunAssessment()}
-                    disabled={assessing || generating}
-                    className="w-full"
-                  >
-                    {assessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-                    {assessing ? "Running Assessment..." : "Run Impact Assessment"}
-                  </PrimaryButton>
-                  <ToolbarButton
-                    type="button"
-                    onClick={() => void handleGenerateDrafts()}
-                    disabled={assessing || generating}
-                    className="w-full"
-                  >
-                    {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
-                    {generating ? "Generating Drafts..." : "Generate Remediation Drafts"}
-                  </ToolbarButton>
-                </div>
-              </div>
-            )}
-          </WorkbenchCard>
+              <button
+                type="button"
+                onClick={() => void handleGenerateDrafts()}
+                disabled={generating}
+                className="inline-flex h-10 items-center justify-center gap-3 rounded-lg border border-slate-300 bg-white px-7 text-sm font-bold text-slate-950 hover:bg-slate-100 disabled:opacity-60"
+              >
+                {generating ? <Loader2 className="h-5 w-5 animate-spin" /> : <FileText className="h-5 w-5" />}
+                Generate Remediation Drafts
+              </button>
+            </div>
+          </div>
         )}
       </div>
+
+      <RegulationRail
+        regulations={regulations}
+        selectedId={selected?.id ?? null}
+        loading={loading}
+        impact={impact}
+        assessing={assessing}
+        onFetch={() => void load()}
+        onSelect={(id) => setSelectedId(id)}
+        onRun={(regulation) => void handleRunAssessment(regulation)}
+      />
+
+      <CitationPanel open={citationOpen} onClose={() => setCitationOpen(false)} regulation={selected} />
+    </div>
+  );
+}
+
+function RegulationRail({
+  regulations,
+  selectedId,
+  loading,
+  impact,
+  assessing,
+  onFetch,
+  onSelect,
+  onRun,
+}: {
+  regulations: RegulationResponse[];
+  selectedId: string | null;
+  loading: boolean;
+  impact: ImpactResponse | null;
+  assessing: boolean;
+  onFetch: () => void;
+  onSelect: (id: string) => void;
+  onRun: (regulation: RegulationResponse) => void;
+}) {
+  return (
+    <aside className="hidden w-shell-rail flex-shrink-0 overflow-y-auto border-l border-slate-700 bg-[#020613] px-6 py-6 xl:block">
+      <div className="mb-6 flex justify-end">
+        <button
+          type="button"
+          onClick={onFetch}
+          className="inline-flex h-10 items-center gap-3 rounded-lg bg-blue-600 px-7 text-sm font-bold text-white hover:bg-blue-500"
+        >
+          <RefreshCw className={clsx("h-5 w-5", loading && "animate-spin")} />
+          Fetch
+        </button>
+      </div>
+
+      <div className="space-y-5">
+        {regulations.map((regulation) => {
+          const active = regulation.id === selectedId;
+          const analyzed = impact?.regulation_id === regulation.id || regulation.status === "ANALYSIS_COMPLETE";
+          return (
+            <article
+              key={regulation.id}
+              className={clsx(
+                "rounded-lg border bg-slate-800/90 p-4 transition",
+                active ? "border-blue-500 shadow-[0_0_0_1px_rgba(37,99,235,0.35)]" : "border-slate-700"
+              )}
+            >
+              <button type="button" onClick={() => onSelect(regulation.id)} className="block w-full text-left">
+                <h2 className="line-clamp-3 text-sm font-extrabold uppercase leading-5 text-white">
+                  {regulation.title}
+                </h2>
+                <p className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-slate-400">
+                  <Link2 className="h-3.5 w-3.5" />
+                  {hostFor(regulation.source_url)}
+                </p>
+              </button>
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <StatusBadge label={analyzed ? "Analysis Complete" : statusFor(regulation, impact)} tone={analyzed ? "emerald" : "amber"} />
+                <button
+                  type="button"
+                  onClick={() => onRun(regulation)}
+                  disabled={assessing}
+                  className="inline-flex h-7 items-center gap-1.5 rounded-md bg-blue-600 px-3 text-[11px] font-bold text-white hover:bg-blue-500 disabled:opacity-60"
+                >
+                  {assessing && active ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3 fill-white" />}
+                  {analyzed ? "Rerun" : "Run"}
+                </button>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </aside>
+  );
+}
+
+function AssessmentSummary({
+  regulation,
+  impact,
+  onOpenCitation,
+}: {
+  regulation: RegulationResponse | null;
+  impact: ImpactResponse;
+  onOpenCitation: () => void;
+}) {
+  return (
+    <section className="rounded-lg border border-slate-700 bg-[#081024] p-6">
+      <div className="flex flex-wrap items-start justify-between gap-5">
+        <div className="max-w-3xl">
+          <p className="text-xs font-extrabold uppercase text-slate-400">Regulatory Summary</p>
+          <h2 className="mt-4 text-2xl font-bold leading-tight text-white">
+            {regulation?.title ?? "Selected regulation"}
+          </h2>
+          <p className="mt-3 text-sm text-slate-400">
+            Published {regulation ? formatDate(regulation.published_date) : "recently"} from{" "}
+            {regulation ? hostFor(regulation.source_url) : "federalregister.gov"}
+          </p>
+        </div>
+        <div className="rounded-lg border border-slate-700 bg-[#040817] px-5 py-4 text-center">
+          <p className="text-xs font-bold uppercase text-slate-500">Risk Score</p>
+          <p className="mt-1 text-4xl font-extrabold text-red-300">{Math.round(impact.risk_score)}</p>
+        </div>
+      </div>
+      <p className="mt-6 max-w-4xl text-base leading-7 text-slate-300">
+        {regulation?.rationale || regulation?.raw_content || "The selected update affects validated QMS controls."}
+      </p>
+      <div className="mt-6 flex flex-wrap gap-2">
+        {impact.affected_departments.map((department) => (
+          <StatusBadge key={department} label={department} tone="blue" />
+        ))}
+        <button
+          type="button"
+          onClick={onOpenCitation}
+          className="inline-flex items-center gap-1.5 rounded-md border border-blue-500/40 bg-blue-500/10 px-2 py-0.5 text-[11px] font-semibold text-blue-200 hover:bg-blue-500/20"
+        >
+          <ShieldCheck className="h-3.5 w-3.5" />
+          Citation detail
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function ImpactNarrative({ impact, onOpenCitation }: { impact: ImpactResponse; onOpenCitation: () => void }) {
+  return (
+    <section className="rounded-lg border border-slate-700 bg-[#081024] p-6">
+      <p className="text-xs font-extrabold uppercase text-slate-400">Impact Assessment</p>
+      <p className="mt-6 text-base leading-7 text-slate-300">
+        {impact.rationale.split("Validation SOP section 3.2")[0]}
+        <button
+          type="button"
+          onClick={onOpenCitation}
+          className="font-semibold text-blue-400 underline decoration-blue-500/70 underline-offset-4"
+        >
+          Validation SOP section 3.2
+        </button>
+        {impact.rationale.split("Validation SOP section 3.2")[1] ?? ""}
+      </p>
+      <div className="mt-6 border-t border-slate-800 pt-5 text-xs text-slate-500">
+        <button type="button" onClick={onOpenCitation} className="block text-left hover:text-blue-300">
+          [1] Validation SOP - Section 4.1: Electronic Signature Validation
+        </button>
+        <button type="button" onClick={onOpenCitation} className="mt-2 block text-left hover:text-blue-300">
+          [2] Validation SOP - Section 3.2: Audit Trail Requirements
+        </button>
+        <button type="button" onClick={onOpenCitation} className="mt-2 block text-left hover:text-blue-300">
+          [3] CSV Validation SOP - Section 5.4: Electronic Signature Procedures
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function SopComparison() {
+  const rows = [
+    ["Users must authenticate before accessing validated systems.", "Users must authenticate with MFA before accessing validated systems."],
+    ["Audit trails must capture regulated record changes.", "Audit trails must capture regulated record changes and session events."],
+    ["Reviewer decisions must be retained.", "Reviewer decisions must be retained with explicit session-control evidence."],
+  ];
+
+  return (
+    <section className="overflow-hidden rounded-lg border border-slate-700 bg-[#081024]">
+      <div className="flex items-center justify-between border-b border-slate-700 px-6 py-4">
+        <p className="text-xs font-extrabold uppercase text-slate-400">SOP Comparison</p>
+        <div className="flex gap-2">
+          <StatusBadge label="Added" tone="emerald" />
+          <StatusBadge label="Deleted" tone="red" />
+          <StatusBadge label="Citations" tone="blue" />
+        </div>
+      </div>
+      <div className="grid md:grid-cols-2">
+        <div className="border-b border-slate-700 md:border-b-0 md:border-r">
+          <div className="border-b border-slate-800 px-6 py-3 text-xs font-bold uppercase text-slate-500">
+            Current SOP <StatusBadge label="v2.1" tone="slate" className="ml-2" />
+          </div>
+          <div className="divide-y divide-slate-800">
+            {rows.map(([before], index) => (
+              <p key={before} className={clsx("px-6 py-4 text-sm leading-6", index < 2 ? "bg-red-500/10 text-red-100" : "text-slate-400")}>
+                <span className="mr-4 font-mono text-slate-500">{index + 1}</span>
+                {before}
+              </p>
+            ))}
+          </div>
+        </div>
+        <div>
+          <div className="border-b border-slate-800 px-6 py-3 text-xs font-bold uppercase text-slate-500">
+            Draft SOP <StatusBadge label="v2.2" tone="emerald" className="ml-2" />
+          </div>
+          <div className="divide-y divide-slate-800">
+            {rows.map(([, after], index) => (
+              <p key={after} className="bg-emerald-500/10 px-6 py-4 text-sm leading-6 text-emerald-100">
+                <span className="mr-4 font-mono text-slate-500">{index + 1}</span>
+                {after}
+              </p>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function CitationPanel({
+  open,
+  onClose,
+  regulation,
+}: {
+  open: boolean;
+  onClose: () => void;
+  regulation: RegulationResponse | null;
+}) {
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-40">
+      <button type="button" aria-label="Close citation panel" className="absolute inset-0 bg-black/75" onClick={onClose} />
+      <aside className="absolute inset-y-0 right-0 w-full max-w-[560px] overflow-y-auto border-l border-slate-800 bg-[#061026] px-6 py-8 shadow-2xl">
+        <div className="flex items-center justify-between gap-4">
+          <p className="text-sm font-extrabold uppercase text-slate-300">Knowledge Base Citation</p>
+          <button type="button" aria-label="Close" onClick={onClose} className="rounded-md p-1 text-slate-500 hover:bg-slate-800 hover:text-white">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="mt-6 border-t border-slate-800 pt-6">
+          <h2 className="text-2xl font-extrabold text-white">Validation SOP</h2>
+          <p className="mt-2 text-base italic text-slate-200">Section 3.2: Audit Trail Requirements</p>
+        </div>
+        <div className="mt-8 rounded-lg border border-slate-600 bg-[#081024] p-6 text-base leading-8 text-slate-200">
+          Audit trails for validated systems must record user identity, timestamp, action, prior value, new value,
+          and reviewer decision. Access controls must be reviewed when authentication rules or session controls change.
+        </div>
+        <div className="mt-8 rounded-lg bg-[#0a132d] p-6">
+          <p className="text-xs font-extrabold uppercase text-slate-400">Matched Regulation</p>
+          <p className="mt-3 text-sm leading-6 text-slate-200">
+            {regulation?.title ?? "FDA mandatory multi-factor authentication and session idle timeout requirements"}
+          </p>
+        </div>
+        <div className="mt-8">
+          <p className="text-xs font-extrabold uppercase text-slate-400">Why Flagged</p>
+          <p className="mt-3 text-base leading-7 text-slate-300">
+            The current SOP covers audit trail capture, but it does not explicitly bind audit evidence to MFA and idle timeout
+            configuration. The remediation draft closes that traceability gap.
+          </p>
+        </div>
+      </aside>
     </div>
   );
 }

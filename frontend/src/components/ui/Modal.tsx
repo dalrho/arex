@@ -11,13 +11,9 @@ interface ModalProps {
   description?: string;
   children: React.ReactNode;
   footer?: React.ReactNode;
-  /** Tailwind max-width class for the dialog, defaults to max-w-lg. */
   widthClassName?: string;
 }
 
-/**
- * Simple modal dialog with backdrop. Closes on Escape and backdrop click.
- */
 export default function Modal({
   open,
   onClose,
@@ -40,33 +36,33 @@ export default function Modal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-slate-950/40" onClick={onClose} aria-hidden="true" />
+      <div className="absolute inset-0 bg-black/70" onClick={onClose} aria-hidden="true" />
       <div
         role="dialog"
         aria-modal="true"
         aria-label={title}
         className={clsx(
-          "relative flex max-h-[85vh] w-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl",
+          "relative flex max-h-[85vh] w-full flex-col overflow-hidden rounded-xl border border-slate-700 bg-slate-950 shadow-2xl shadow-black/40",
           widthClassName ?? "max-w-lg"
         )}
       >
-        <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-800 px-5 py-4">
           <div>
-            <h2 className="text-base font-bold text-slate-950">{title}</h2>
+            <h2 className="text-base font-bold text-white">{title}</h2>
             {description && <p className="mt-0.5 text-sm text-slate-500">{description}</p>}
           </div>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close dialog"
-            className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+            className="rounded-md p-1 text-slate-500 hover:bg-slate-800 hover:text-white"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 text-slate-200">{children}</div>
         {footer && (
-          <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-200 px-5 py-3">
+          <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-800 px-5 py-3">
             {footer}
           </div>
         )}

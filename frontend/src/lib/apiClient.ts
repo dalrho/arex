@@ -1,11 +1,6 @@
-// Thin fetch-based client for the Sentinel OS API.
-// Requests are proxied by next.config.js rewrites to the FastAPI backend.
-
 import type {
   ApprovalRecordResponse,
   AuthUser,
-  DashboardMetrics,
-  DiffContent,
   DocumentResponse,
   ImpactResponse,
   LoginResponse,
@@ -14,12 +9,9 @@ import type {
   TaskCreatePayload,
   TaskResponse,
   TaskUpdatePayload,
-  UserResponse,
 } from "@/types/api";
 
 const API_BASE = "/api/v1";
-
-// Seeded development tenant used by the backend when no session exists.
 const DEFAULT_TENANT_ID = "9280d0d8-5527-4632-bd92-4fcf05c75462";
 
 const TOKEN_KEY = "sentinel_token";
@@ -80,7 +72,7 @@ async function parseError(res: Response): Promise<ApiError> {
     const body = await res.json();
     if (typeof body?.detail === "string") message = body.detail;
   } catch {
-    // non-JSON error body; keep default message
+    // Keep the status-based fallback for non-JSON error bodies.
   }
   return new ApiError(res.status, message);
 }
@@ -104,8 +96,6 @@ function sendJson<T>(path: string, method: string, body?: unknown): Promise<T> {
   });
 }
 
-// ---- Auth ----
-
 export function login(email: string, password: string): Promise<LoginResponse> {
   return request<LoginResponse>("/auth/login", {
     method: "POST",
@@ -113,20 +103,6 @@ export function login(email: string, password: string): Promise<LoginResponse> {
     body: JSON.stringify({ email, password }),
   });
 }
-
-// ---- Users ----
-
-export function listUsers(): Promise<UserResponse[]> {
-  return getJson("/users");
-}
-
-// ---- Dashboard ----
-
-export function getDashboard(): Promise<DashboardMetrics> {
-  return getJson("/dashboard");
-}
-
-// ---- Documents ----
 
 export function listDocuments(): Promise<DocumentResponse[]> {
   return getJson("/documents");
@@ -153,16 +129,17 @@ export function deleteDocument(id: string): Promise<void> {
   });
 }
 
-export async function downloadDocument(id: string, filename: string): Promise<void> {
+export async function fetchDocumentBlob(id: string): Promise<Blob> {
   const res = await fetch(`${API_BASE}/documents/${id}/download`, {
     headers: buildHeaders(),
   });
   if (!res.ok) throw await parseError(res);
-  const blob = await res.blob();
-  triggerBlobDownload(blob, filename);
+  return res.blob();
 }
 
-// ---- Regulations ----
+export async function downloadDocument(id: string, filename: string): Promise<void> {
+  triggerBlobDownload(await fetchDocumentBlob(id), filename);
+}
 
 export function listRegulations(): Promise<RegulationResponse[]> {
   return getJson("/regulations");
@@ -172,8 +149,6 @@ export function getRegulation(id: string): Promise<RegulationResponse> {
   return getJson(`/regulations/${id}`);
 }
 
-// ---- Impact ----
-
 export function getImpactForRegulation(regulationId: string): Promise<ImpactResponse> {
   return getJson(`/impact/regulation/${regulationId}`);
 }
@@ -181,8 +156,6 @@ export function getImpactForRegulation(regulationId: string): Promise<ImpactResp
 export function runImpactAssessment(regulationId: string): Promise<ImpactResponse> {
   return sendJson(`/impact/regulation/${regulationId}/assess`, "POST");
 }
-
-// ---- Remediation ----
 
 export function listRemediations(): Promise<RemediationResponse[]> {
   return getJson("/remediation");
@@ -205,20 +178,12 @@ export function generateRemediationDrafts(
   return sendJson(`/remediation/regulation/${regulationId}`, "POST");
 }
 
-// ---- Approvals ----
-
 export function submitApprovalDecision(
   remediationId: string,
   decision: "APPROVED" | "REJECTED"
 ): Promise<ApprovalRecordResponse> {
   return sendJson(`/approvals/remediation/${remediationId}`, "POST", { decision });
 }
-
-export function listApprovalRecords(): Promise<ApprovalRecordResponse[]> {
-  return getJson("/approvals/records");
-}
-
-// ---- Tasks ----
 
 export function listTasks(): Promise<TaskResponse[]> {
   return getJson("/tasks");
@@ -230,19 +195,6 @@ export function createTask(payload: TaskCreatePayload): Promise<TaskResponse> {
 
 export function updateTask(id: string, payload: TaskUpdatePayload): Promise<TaskResponse> {
   return sendJson(`/tasks/${id}`, "PUT", payload);
-}
-
-// ---- Exports ----
-
-function triggerBlobDownload(blob: Blob, filename: string): void {
-  const url = window.URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  window.URL.revokeObjectURL(url);
 }
 
 export async function downloadRemediationExport(
@@ -257,9 +209,16 @@ export async function downloadRemediationExport(
   const disposition = res.headers.get("Content-Disposition") ?? "";
   const match = disposition.match(/filename=([^;]+)/);
   const filename = match ? match[1].trim() : `remediation-report.${format}`;
-
-  const blob = await res.blob();
-  triggerBlobDownload(blob, filename);
+  triggerBlobDownload(await res.blob(), filename);
 }
 
-export type { DiffContent };
+function triggerBlobDownload(blob: Blob, filename: string): void {
+  const url = window.URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.URL.revokeObjectURL(url);
+}
