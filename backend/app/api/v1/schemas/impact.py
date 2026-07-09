@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 from pydantic import BaseModel
 
 class ImpactResponse(BaseModel):
@@ -11,8 +11,10 @@ class ImpactResponse(BaseModel):
     impact_level: str
     rationale: str
     affected_departments: List[str]
+    affected_documents: Optional[List[dict]] = None
     status: str
     created_at: datetime
+
 
     class Config:
         from_attributes = True

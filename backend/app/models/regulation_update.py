@@ -14,7 +14,8 @@ class RegulationUpdate(Base):
     raw_content: Mapped[str] = mapped_column(Text, nullable=False)
     parsed_sections: Mapped[dict | list | None] = mapped_column(JSON, nullable=True)  # Structured clauses
     hash_value: Mapped[str] = mapped_column(String(64), nullable=False)  # SHA-256 hash of raw_content
-    status: Mapped[str] = mapped_column(String(50), default="pending_analysis", nullable=False)  # pending_analysis | classified
+    status: Mapped[str] = mapped_column(String(50), default="Not Analyzed", nullable=False)  # Not Analyzed | Impact Assessment Complete | ...
+    audit_history: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

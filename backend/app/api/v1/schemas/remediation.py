@@ -14,10 +14,14 @@ class RemediationResponse(BaseModel):
     proposed_text: str
     original_text: str
     diff_content: Optional[Any] = None
+    explanation: Optional[str] = None
+    requires_tasks: Optional[bool] = True
     status: str
     reviewer_id: Optional[uuid.UUID] = None
     reviewed_at: Optional[datetime] = None
     created_at: datetime
+
+
 
     class Config:
         from_attributes = True

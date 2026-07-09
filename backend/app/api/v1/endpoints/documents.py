@@ -7,7 +7,10 @@ from pydantic import BaseModel
 
 from app.core.dependencies import get_db, get_tenant_id
 from app.models.document import Document
-from app.api.v1.schemas.document import DocumentResponse
+from app.models.document_version import DocumentVersion
+
+from app.api.v1.schemas.document import DocumentResponse, DocumentVersionResponse
+
 from app.services.regulation_parser.pdf_parser import extract_text_from_pdf
 from app.services.embeddings.embedding_service import embedding_service
 from app.services.vector_db.qdrant_client import vector_db_client
@@ -97,6 +100,21 @@ async def upload_document(
     db.add(db_doc)
     db.commit()
     db.refresh(db_doc)
+
+    # Save Initial Version in DocumentVersion history
+    db_version = DocumentVersion(
+        id=uuid.uuid4(),
+        document_id=db_doc.id,
+        version=1,
+        filename=filename,
+        file_path=file_path,
+        parsed_text=parsed_text,
+        reason_for_revision="Initial upload",
+        created_at=db_doc.created_at
+    )
+    db.add(db_version)
+    db.commit()
+
 
     # 5. Chunk and Index in Qdrant Vector DB
     try:
@@ -234,3 +252,56 @@ def delete_document(
     db.delete(document)
     db.commit()
     return None
+
+@router.get("/{document_id}/versions", response_model=List[DocumentVersionResponse])
+def list_document_versions(
+    document_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_tenant_id)
+) -> Any:
+    """
+    List all version history records of a specific document, scoped by organization tenant.
+    """
+    org_id = uuid.UUID(tenant_id)
+    document = db.query(Document).filter(
+        Document.id == document_id,
+        Document.organization_id == org_id
+    ).first()
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found"
+        )
+    return db.query(DocumentVersion).filter(DocumentVersion.document_id == document_id).order_by(DocumentVersion.version.desc()).all()
+
+@router.get("/{document_id}/versions/{version_number}", response_model=DocumentVersionResponse)
+def get_document_version(
+    document_id: uuid.UUID,
+    version_number: int,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_tenant_id)
+) -> Any:
+    """
+    Get a specific historical version of a document.
+    """
+    org_id = uuid.UUID(tenant_id)
+    document = db.query(Document).filter(
+        Document.id == document_id,
+        Document.organization_id == org_id
+    ).first()
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found"
+        )
+    version = db.query(DocumentVersion).filter(
+        DocumentVersion.document_id == document_id,
+        DocumentVersion.version == version_number
+    ).first()
+    if not version:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Version not found"
+        )
+    return version
+

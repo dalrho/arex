@@ -37,8 +37,16 @@ def assess_compliance_impact(
         ImpactAssessment.organization_id == organization_id
     ).first()
     if existing:
-        logger.info(f"Impact assessment already exists for regulation {regulation_id}.")
-        return existing
+        logger.info(f"Overwriting existing impact assessment and invalidating drafts/tasks for regulation {regulation_id}...")
+        db.delete(existing)
+        
+        from app.models.remediation_draft import RemediationDraft
+        db.query(RemediationDraft).filter(RemediationDraft.regulation_id == regulation_id).delete()
+        
+        from app.models.implementation_task import ImplementationTask
+        db.query(ImplementationTask).filter(ImplementationTask.regulation_id == regulation_id).delete()
+        
+        db.commit()
 
     # 2. Get embeddings and query Qdrant
     query_vector = embedding_service.get_embedding(regulation.raw_content)
@@ -107,10 +115,49 @@ def assess_compliance_impact(
 
     # Compile rationale string
     matched_sops_names = []
+    affected_docs_list = []
     from app.models.document import Document
     if matched_doc_ids:
         docs = db.query(Document).filter(Document.id.in_(matched_doc_ids)).all()
         matched_sops_names = [d.filename for d in docs]
+        for doc in docs:
+            fname_lower = doc.filename.lower()
+            if "sop" in fname_lower:
+                doc_type = "SOP"
+            elif "policy" in fname_lower:
+                doc_type = "Company Policy"
+            elif "plan" in fname_lower:
+                doc_type = "Validation Plan"
+            else:
+                doc_type = "Other controlled document"
+
+            info = unique_docs[doc.id]
+            score = info["max_score"]
+            snippet = info["text_snippet"]
+            
+            topics = []
+            reg_lower = regulation.raw_content.lower()
+            if "mfa" in reg_lower or "multi-factor" in reg_lower:
+                topics.append("Multi-Factor Authentication (MFA)")
+            if "timeout" in reg_lower or "idle" in reg_lower:
+                topics.append("Session Idle Timeout")
+            if "signature" in reg_lower:
+                topics.append("Electronic Signatures")
+            
+            explanation = (
+                f"Document '{doc.filename}' specifies system access or control procedures but lacks "
+                f"explicit alignment with new FDA guidance on {', '.join(topics) if topics else 'controls'}. "
+                f"Requires revision of session limits or authentication factors."
+            )
+
+            affected_docs_list.append({
+                "document_id": str(doc.id),
+                "document_name": doc.filename,
+                "document_type": doc_type,
+                "affected_sections": snippet,
+                "explanation": explanation,
+                "confidence_score": round(score * 100, 1)
+            })
 
     sops_str = ", ".join(matched_sops_names) if matched_sops_names else "None"
     rationale = (
@@ -129,15 +176,10 @@ def assess_compliance_impact(
         impact_level=risk_info["impact_level"],
         rationale=rationale,
         affected_departments=affected_departments,
+        affected_documents=affected_docs_list,
         status="pending"
     )
 
-    # Attach document list as transient property if needed or store in state
-    # (Since PostgreSQL model has matched_document_ids, wait, let's check model definition)
-    # Ah! In the PostgreSQL model we defined, we had no matched_document_ids list. Let's see models/impact_assessment.py.
-    # It has: id, regulation_id, organization_id, risk_score, impact_level, rationale, affected_departments (JSON), status.
-    # That is perfectly fine, we store the metadata in the rationale or state.
-    
     db.add(assessment)
     db.commit()
     db.refresh(assessment)
@@ -146,3 +188,4 @@ def assess_compliance_impact(
     assessment.matched_document_ids = matched_doc_ids
     
     return assessment
+

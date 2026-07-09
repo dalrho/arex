@@ -17,3 +17,17 @@ class DocumentResponse(DocumentBase):
 
     class Config:
         from_attributes = True
+
+class DocumentVersionResponse(BaseModel):
+    id: uuid.UUID
+    document_id: uuid.UUID
+    version: int
+    filename: str
+    file_path: str
+    parsed_text: str | None
+    reason_for_revision: str | None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+

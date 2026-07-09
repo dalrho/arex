@@ -8,6 +8,7 @@ from app.db.base import Base
 from app.models.user import User
 from app.models.organization import Organization
 from app.models.document import Document
+from app.models.document_version import DocumentVersion
 from app.models.regulation_update import RegulationUpdate
 from app.models.remediation_draft import RemediationDraft
 from app.models.approval_record import ApprovalRecord
