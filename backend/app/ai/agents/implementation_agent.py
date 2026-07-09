@@ -18,6 +18,7 @@ class TaskItem(BaseModel):
     priority: str = "Medium"  # Low | Medium | High
 
 class ImplementationAgentOutput(BaseModel):
+    requires_tasks: bool
     tasks: List[TaskItem]
 
 def run_implementation_agent(state: Dict[str, Any]) -> Dict[str, Any]:
@@ -51,7 +52,8 @@ def run_implementation_agent(state: Dict[str, Any]) -> Dict[str, Any]:
         except Exception:
             system_prompt = (
                 "You are an implementation project manager in a GxP environment. "
-                "Break down the suggested SOP changes into actionable task items for IT, Engineering, QA, and Training."
+                "Determine if operational execution tasks are required. If so, output requires_tasks as true "
+                "and list tasks for IT, Engineering, QA, or Training. Otherwise, output requires_tasks as false."
             )
 
         for draft_id_str in draft_ids:
@@ -74,53 +76,66 @@ def run_implementation_agent(state: Dict[str, Any]) -> Dict[str, Any]:
                 {"role": "user", "content": user_prompt}
             ]
             
+            logger.info(
+                f"[ImplementationAgent] Calling LLM for draft {draft_id} | "
+                f"mode={'online' if not llm_client.is_offline_mode() else 'offline'}"
+            )
             # Call LLM client
             result: ImplementationAgentOutput = llm_client.get_completion(
                 messages=messages,
                 response_model=ImplementationAgentOutput,
-                temperature=0.0
+                temperature=0.0,
             )
             
-            # Store generated tasks
-            for item in result.tasks:
-                # Validate department enum matching models
-                dept_normalized = item.department.strip()
-                if dept_normalized.upper() in ["IT", "INFORMATION TECHNOLOGY"]:
-                    dept = "IT"
-                elif dept_normalized.upper() in ["ENGINEERING", "ENG"]:
-                    dept = "Engineering"
-                elif dept_normalized.upper() in ["QA", "QUALITY ASSURANCE"]:
-                    dept = "QA"
-                else:
-                    dept = "Training"
+            # Save requires_tasks state on the draft
+            draft.requires_tasks = result.requires_tasks
+            db.add(draft)
+            db.commit()
+
+            # Store generated tasks if operational work is needed
+            if result.requires_tasks:
+                for item in result.tasks:
+                    # Validate department enum matching models
+                    dept_normalized = item.department.strip()
+                    if dept_normalized.upper() in ["IT", "INFORMATION TECHNOLOGY"]:
+                        dept = "IT"
+                    elif dept_normalized.upper() in ["ENGINEERING", "ENG"]:
+                        dept = "Engineering"
+                    elif dept_normalized.upper() in ["QA", "QUALITY ASSURANCE"]:
+                        dept = "QA"
+                    else:
+                        dept = "Training"
+                        
+                    # Normalize priority
+                    priority = item.priority.strip().capitalize()
+                    if priority not in ["Low", "Medium", "High"]:
+                        priority = "Medium"
+                        
+                    # Save task
+                    task = ImplementationTask(
+                        id=uuid.uuid4(),
+                        regulation_id=uuid.UUID(regulation_id_str),
+                        remediation_draft_id=draft.id,
+                        title=item.title,
+                        description=item.description,
+                        department=dept,
+                        priority=priority,
+                        status="PENDING_APPROVAL"
+                    )
+                    db.add(task)
+                    db.commit()
+                    db.refresh(task)
+                    task_ids.append(str(task.id))
                     
-                # Normalize priority
-                priority = item.priority.strip().capitalize()
-                if priority not in ["Low", "Medium", "High"]:
-                    priority = "Medium"
-                    
-                # Save task
-                task = ImplementationTask(
-                    id=uuid.uuid4(),
-                    regulation_id=uuid.UUID(regulation_id_str),
-                    remediation_draft_id=draft.id,
-                    title=item.title,
-                    description=item.description,
-                    department=dept,
-                    priority=priority,
-                    status="TODO"
-                )
-                db.add(task)
-                db.commit()
-                db.refresh(task)
-                task_ids.append(str(task.id))
-                
         logger.info(f"Implementation Agent successfully created {len(task_ids)} tasks.")
         return {"task_ids": task_ids}
+
         
     except Exception as e:
         logger.error(f"Implementation Agent failed: {e}")
         db.rollback()
+        if not llm_client.is_offline_mode():
+            raise e
         return {"task_ids": []}
     finally:
         db.close()
