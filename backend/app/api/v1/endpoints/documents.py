@@ -1,9 +1,12 @@
 import os
 import uuid
+import logging
 from typing import Any, List
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
+
+logger = logging.getLogger("arex.api.documents")
 
 from app.core.dependencies import get_db, get_tenant_id
 from app.models.document import Document
@@ -119,6 +122,13 @@ async def upload_document(
     # 5. Chunk and Index in Qdrant Vector DB
     try:
         text_chunks = chunk_text(parsed_text)
+        num_docs = db.query(Document).filter(Document.organization_id == org_id).count()
+        logger.info(
+            f"[DEBUG LOG] Indexing document '{filename}' | "
+            f"Embedding Model: {embedding_service.settings.GEMINI_EMBEDDING_MODEL} | "
+            f"Total Indexed Documents: {num_docs} | "
+            f"Number of Chunks: {len(text_chunks)}"
+        )
         if text_chunks:
             vectors = embedding_service.get_embeddings(text_chunks)
             qdrant_chunks = [
@@ -135,7 +145,7 @@ async def upload_document(
         # and notify the client or retry.
         # This keeps the REST endpoint resilient.
         router.routes  # dummy access
-        # logger.error(f"Vector DB indexing failed: {e}")
+        logger.error(f"[DEBUG LOG] Vector DB indexing failed for '{filename}': {e}", exc_info=True)
 
     return db_doc
 

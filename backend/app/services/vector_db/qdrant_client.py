@@ -23,8 +23,23 @@ class VectorDBClient:
         try:
             collections = self.client.get_collections()
             exist = any(c.name == self.collection_name for c in collections.collections)
+            if exist:
+                try:
+                    col_info = self.client.get_collection(self.collection_name)
+                    # Retrieve the vector configuration size to detect dimension mismatch
+                    vectors_config = col_info.config.params.vectors
+                    current_size = getattr(vectors_config, "size", None)
+                    if current_size is None and isinstance(vectors_config, dict):
+                        current_size = vectors_config.get("size")
+                    if current_size != 768:
+                        logger.warning(f"Existing collection size is {current_size}, expected 768. Forcing recreation.")
+                        force_recreate = True
+                except Exception as check_err:
+                    logger.warning(f"Could not verify existing Qdrant collection size: {check_err}. Recreating.")
+                    force_recreate = True
+
             if exist and force_recreate:
-                logger.warning(f"Dropping Qdrant collection '{self.collection_name}' for reset.")
+                logger.warning(f"Dropping Qdrant collection '{self.collection_name}' for reset/recreation.")
                 self.client.delete_collection(collection_name=self.collection_name)
                 exist = False
             if not exist:
@@ -32,12 +47,12 @@ class VectorDBClient:
                 self.client.create_collection(
                     collection_name=self.collection_name,
                     vectors_config=qdrant_models.VectorParams(
-                        size=1024,  # BGE-large embedding size
+                        size=768,  # Unified embedding size (text-embedding-004 / truncated gemini-embedding-001)
                         distance=qdrant_models.Distance.COSINE
                     )
                 )
             else:
-                logger.info(f"Qdrant collection '{self.collection_name}' already exists.")
+                logger.info(f"Qdrant collection '{self.collection_name}' already exists and matches expected dimensions (768).")
         except Exception as e:
             logger.error(f"Failed to initialize Qdrant collection: {e}")
             raise e
