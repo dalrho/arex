@@ -319,10 +319,10 @@ def seed_database():
 
         remediation = RemediationDraft(
             id=uuid.uuid4(),
-            document_id=sop_101_model.id,
+            sop_id=sop_101_model.id,
             regulation_id=reg_id,
-            proposed_text=proposed_remediation_text,
-            original_text=SOP_101_TEXT,
+            proposed_revision=proposed_remediation_text,
+            current_content=SOP_101_TEXT,
             diff_content={
                 "added": [
                     "Additionally, Multi-Factor Authentication (MFA) must be enforced for all users.",
@@ -333,7 +333,7 @@ def seed_database():
                 ]
             },
             explanation="Updates password policy to mandate MFA and reduces idle session timeouts to 15 minutes to satisfy Part 11 requirements.",
-            status="PENDING_REVIEW",
+            status="Under Review",
             reviewer_id=None,
             reviewed_at=None,
             created_at=datetime.now(timezone.utc)

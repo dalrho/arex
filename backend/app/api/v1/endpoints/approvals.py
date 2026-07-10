@@ -89,6 +89,14 @@ def submit_approval_decision(
             detail="Electronic signature execution requires a valid authenticated user session (21 CFR Part 11)."
         )
 
+    # Verify user exists in DB for GxP ForeignKey constraint safety
+    db_user = db.query(User).filter(User.id == reviewer_id).first()
+    if not db_user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Electronic signature execution requires a valid registered user. Please re-authenticate."
+        )
+
     # 1. Update draft status
     draft.status = decision
     draft.reviewer_id = reviewer_id
@@ -96,18 +104,19 @@ def submit_approval_decision(
 
     # 2. If approved, update active document and vector store
     if decision == "APPROVED":
-        doc = db.query(Document).filter(Document.id == draft.document_id).first()
+        doc = db.query(Document).filter(Document.id == draft.sop_id).first()
         if doc:
             # GxP Document Version Control Upgrade
             doc.version += 1
-            doc.parsed_text = draft.proposed_text
+            doc.parsed_text = draft.proposed_revision
             
-            # Sync to physical storage
+            # Sync to physical storage: write the new version to a separate text file
+            versioned_file_path = os.path.join("/app/storage", f"{doc.id}_v{doc.version}.txt")
             try:
-                with open(doc.file_path, "w", encoding="utf-8") as f:
-                    f.write(draft.proposed_text)
+                with open(versioned_file_path, "w", encoding="utf-8") as f:
+                    f.write(draft.proposed_revision)
             except OSError:
-                pass
+                versioned_file_path = doc.file_path
 
             # Create document version history entry
             reg = db.query(RegulationUpdate).filter(RegulationUpdate.id == draft.regulation_id).first()
@@ -119,16 +128,19 @@ def submit_approval_decision(
                 document_id=doc.id,
                 version=doc.version,
                 filename=doc.filename,
-                file_path=doc.file_path,
-                parsed_text=draft.proposed_text,
+                file_path=versioned_file_path,
+                parsed_text=draft.proposed_revision,
                 reason_for_revision=reason,
                 created_at=datetime.now(timezone.utc)
             )
             db.add(db_version)
             
             if reg:
-                reg.status = "Draft Approved"
-                db.add(reg)
+                # Update regulation status only if ALL drafts are approved
+                all_drafts = db.query(RemediationDraft).filter(RemediationDraft.regulation_id == draft.regulation_id).all()
+                if all(d.status == "APPROVED" or d.id == draft.id for d in all_drafts):
+                    reg.status = "Draft Approved"
+                    db.add(reg)
 
             from app.core.audit import add_audit_event
             add_audit_event(db, draft.regulation_id, "draft_approved", f"Remediation draft for '{doc.filename}' approved.")
@@ -139,7 +151,7 @@ def submit_approval_decision(
                 # Delete old document vectors
                 vector_db_client.delete_document_chunks(doc.id)
                 # Re-index new text chunks
-                text_chunks = chunk_text(draft.proposed_text)
+                text_chunks = chunk_text(draft.proposed_revision)
                 if text_chunks:
                     vectors = embedding_service.get_embeddings(text_chunks)
                     qdrant_chunks = [
@@ -160,16 +172,13 @@ def submit_approval_decision(
     elif decision == "REJECTED":
         reg = db.query(RegulationUpdate).filter(RegulationUpdate.id == draft.regulation_id).first()
         if reg:
-            reg.status = "Impact Assessment Complete"
+            reg.status = "Needs Revision"
             db.add(reg)
             
         from app.core.audit import add_audit_event
-        doc = db.query(Document).filter(Document.id == draft.document_id).first()
-        doc_name = doc.filename if doc else str(draft.document_id)
-        add_audit_event(db, draft.regulation_id, "draft_rejected", f"Remediation draft for '{doc_name}' rejected. Discarding drafts.")
-        
-        # Discard drafts
-        db.query(RemediationDraft).filter(RemediationDraft.regulation_id == draft.regulation_id).delete()
+        doc = db.query(Document).filter(Document.id == draft.sop_id).first()
+        doc_name = doc.filename if doc else str(draft.sop_id)
+        add_audit_event(db, draft.regulation_id, "draft_rejected", f"Remediation draft for '{doc_name}' rejected.")
 
 
     # 3. Write immutable audit record log (21 CFR Part 11)
@@ -180,8 +189,8 @@ def submit_approval_decision(
         status=decision,
         reviewer_id=reviewer_id,
         timestamp=datetime.now(timezone.utc),
-        original_content={"text": draft.original_text},
-        final_content={"text": draft.proposed_text if decision == "APPROVED" else draft.original_text}
+        original_content={"text": draft.current_content},
+        final_content={"text": draft.proposed_revision if decision == "APPROVED" else draft.current_content}
     )
 
     db.add(draft)

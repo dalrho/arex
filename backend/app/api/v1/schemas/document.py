@@ -13,6 +13,7 @@ class DocumentResponse(DocumentBase):
     organization_id: uuid.UUID
     file_path: str
     version: int
+    parsed_text: str | None = None
     created_at: datetime
 
     class Config:

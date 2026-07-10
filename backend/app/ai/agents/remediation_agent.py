@@ -190,36 +190,35 @@ def run_remediation_agent(state: Dict[str, Any]) -> Dict[str, Any]:
             
             # Check if a draft already exists for this doc/regulation combination
             existing_draft = db.query(RemediationDraft).filter(
-                RemediationDraft.document_id == doc_id,
+                RemediationDraft.sop_id == doc_id,
                 RemediationDraft.regulation_id == regulation.id
             ).first()
             
             if existing_draft:
                 logger.info(f"Draft already exists for {doc.filename}. Updating proposed text.")
-                existing_draft.proposed_text = result.proposed_text
+                existing_draft.proposed_revision = result.proposed_text
                 existing_draft.diff_content = diff_meta
                 existing_draft.explanation = result.rationale
-                existing_draft.status = "PENDING_REVIEW"
+                existing_draft.status = "Draft"
                 db.commit()
                 db.refresh(existing_draft)
                 draft_ids.append(str(existing_draft.id))
             else:
                 new_draft = RemediationDraft(
                     id=uuid.uuid4(),
-                    document_id=doc_id,
+                    sop_id=doc_id,
                     regulation_id=regulation.id,
-                    proposed_text=result.proposed_text,
-                    original_text=doc.parsed_text,
+                    proposed_revision=result.proposed_text,
+                    current_content=doc.parsed_text,
                     diff_content=diff_meta,
                     explanation=result.rationale,
-                    status="PENDING_REVIEW"
+                    status="Draft"
                 )
                 db.add(new_draft)
                 db.commit()
                 db.refresh(new_draft)
                 draft_ids.append(str(new_draft.id))
 
-                
         logger.info(f"Remediation Agent successfully generated {len(draft_ids)} drafts.")
         return {"remediation_draft_ids": draft_ids}
         

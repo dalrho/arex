@@ -131,6 +131,12 @@ def reset_application_data(
             for d in db.query(Document.file_path).all()
             if d.file_path
         ]
+        version_paths = [
+            v.file_path
+            for v in db.query(DocumentVersion.file_path).all()
+            if v.file_path
+        ]
+        all_paths = set(doc_paths + version_paths)
 
         # Delete in foreign-key order
         db.query(ApprovalRecord).delete(synchronize_session="fetch")
@@ -146,7 +152,7 @@ def reset_application_data(
 
         # Remove uploaded files from disk
         deleted_files = 0
-        for path in doc_paths:
+        for path in all_paths:
             try:
                 if os.path.isfile(path):
                     os.remove(path)

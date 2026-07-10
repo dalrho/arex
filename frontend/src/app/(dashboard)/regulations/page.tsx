@@ -97,6 +97,13 @@ function RegulationsPage() {
   const [tasks, setTasks] = useState<TaskResponse[]>([]);
   const [showImpactDetails, setShowImpactDetails] = useState(true);
   const [citationOpen, setCitationOpen] = useState(false);
+  const [activeCitationDoc, setActiveCitationDoc] = useState<any | null>(null);
+
+  const handleOpenCitation = (doc: any) => {
+    setActiveCitationDoc(doc);
+    setCitationOpen(true);
+  };
+
   const [user, setUser] = useState<AuthUser | null>(() => getCurrentUser());
   const [selectedCaseImpact, setSelectedCaseImpact] = useState<ImpactResponse | null>(null);
   const [selectedCaseImpactLoading, setSelectedCaseImpactLoading] = useState(false);
@@ -178,10 +185,9 @@ function RegulationsPage() {
         setImpact(null);
       });
 
-    listRemediations()
+    listRemediations(openedId)
       .then((drafts) => {
-        const filtered = drafts.filter((d) => d.regulation_id === openedId);
-        setRemediationDrafts(filtered);
+        setRemediationDrafts(drafts);
       })
       .catch(() => {});
 
@@ -687,8 +693,8 @@ function RegulationsPage() {
               {/* Collapsible Impact Assessment findings detail */}
               {impact && showImpactDetails && (
                 <div className="space-y-6 animate-fadeIn duration-200">
-                  <AssessmentSummary regulation={selected} impact={impact} onOpenCitation={() => setCitationOpen(true)} />
-                  <ImpactNarrative impact={impact} onOpenCitation={() => setCitationOpen(true)} />
+                  <AssessmentSummary regulation={selected} impact={impact} onOpenCitation={handleOpenCitation} />
+                  <ImpactNarrative impact={impact} onOpenCitation={handleOpenCitation} />
                   
                   <AffectedDocumentsList
                     affectedDocs={impact.affected_documents || []}
@@ -720,7 +726,15 @@ function RegulationsPage() {
         onRun={(regulation) => void handleRunAssessment(regulation)}
       />
 
-      <CitationPanel open={citationOpen} onClose={() => setCitationOpen(false)} regulation={selected} />
+      <CitationPanel
+        open={citationOpen}
+        onClose={() => {
+          setCitationOpen(false);
+          setActiveCitationDoc(null);
+        }}
+        regulation={selected}
+        activeDoc={activeCitationDoc}
+      />
 
       {showUploadModal && (
         <UploadRegulationModal
@@ -974,7 +988,7 @@ function AssessmentSummary({
 }: {
   regulation: RegulationResponse | null;
   impact: ImpactResponse;
-  onOpenCitation: () => void;
+  onOpenCitation: (doc: any) => void;
 }) {
   return (
     <section className="rounded-lg border border-slate-700 bg-[#081024] p-6">
@@ -1004,45 +1018,50 @@ function AssessmentSummary({
         {impact.affected_departments.map((department) => (
           <StatusBadge key={department} label={department} tone="blue" />
         ))}
-        <button
-          type="button"
-          onClick={onOpenCitation}
-          className="inline-flex items-center gap-1.5 rounded-md border border-blue-500/40 bg-blue-500/10 px-2 py-0.5 text-[11px] font-semibold text-blue-200 hover:bg-blue-500/20"
-        >
-          <ShieldCheck className="h-3.5 w-3.5" />
-          Citation detail
-        </button>
+        {impact.affected_documents && impact.affected_documents.length > 0 && (
+          <button
+            type="button"
+            onClick={() => impact.affected_documents?.[0] && onOpenCitation(impact.affected_documents[0])}
+            className="inline-flex items-center gap-1.5 rounded-md border border-blue-500/40 bg-blue-500/10 px-2 py-0.5 text-[11px] font-semibold text-blue-200 hover:bg-blue-500/20"
+          >
+            <ShieldCheck className="h-3.5 w-3.5" />
+            Citation detail
+          </button>
+        )}
       </div>
     </section>
   );
 }
 
-function ImpactNarrative({ impact, onOpenCitation }: { impact: ImpactResponse; onOpenCitation: () => void }) {
+function ImpactNarrative({
+  impact,
+  onOpenCitation,
+}: {
+  impact: ImpactResponse;
+  onOpenCitation: (doc: any) => void;
+}) {
+  const docs = impact.affected_documents || [];
   return (
     <section className="rounded-lg border border-slate-700 bg-[#081024] p-6">
       <p className="text-xs font-extrabold uppercase text-slate-400">Impact Assessment</p>
       <p className="mt-6 text-base leading-7 text-slate-300">
-        {impact.rationale.split("Validation SOP section 3.2")[0]}
-        <button
-          type="button"
-          onClick={onOpenCitation}
-          className="font-semibold text-blue-400 underline decoration-blue-500/70 underline-offset-4"
-        >
-          Validation SOP section 3.2
-        </button>
-        {impact.rationale.split("Validation SOP section 3.2")[1] ?? ""}
+        {impact.rationale}
       </p>
-      <div className="mt-6 border-t border-slate-800 pt-5 text-xs text-slate-500">
-        <button type="button" onClick={onOpenCitation} className="block text-left hover:text-blue-300">
-          [1] Validation SOP - Section 4.1: Electronic Signature Validation
-        </button>
-        <button type="button" onClick={onOpenCitation} className="mt-2 block text-left hover:text-blue-300">
-          [2] Validation SOP - Section 3.2: Audit Trail Requirements
-        </button>
-        <button type="button" onClick={onOpenCitation} className="mt-2 block text-left hover:text-blue-300">
-          [3] CSV Validation SOP - Section 5.4: Electronic Signature Procedures
-        </button>
-      </div>
+      {docs.length > 0 && (
+        <div className="mt-6 border-t border-slate-800 pt-5 text-xs text-slate-500">
+          <p className="mb-2 font-semibold text-slate-400">Retrieved SOP Citations:</p>
+          {docs.map((doc: any, index: number) => (
+            <button
+              key={doc.document_id || index}
+              type="button"
+              onClick={() => onOpenCitation(doc)}
+              className="block text-left hover:text-blue-300 mt-2 font-medium"
+            >
+              [{index + 1}] {doc.document_name} - {doc.document_type || "SOP"} (Click for details)
+            </button>
+          ))}
+        </div>
+      )}
     </section>
   );
 }
@@ -1184,12 +1203,19 @@ function CitationPanel({
   open,
   onClose,
   regulation,
+  activeDoc,
 }: {
   open: boolean;
   onClose: () => void;
   regulation: RegulationResponse | null;
+  activeDoc: any | null;
 }) {
   if (!open) return null;
+
+  const title = activeDoc?.document_name || "Knowledge Base Citation";
+  const type = activeDoc?.document_type || "SOP";
+  const snippet = activeDoc?.affected_sections || "No matching snippet text retrieved.";
+  const explanation = activeDoc?.explanation || "This document was matched based on semantic similarity to the new regulations.";
 
   return (
     <div className="fixed inset-0 z-40">
@@ -1202,24 +1228,25 @@ function CitationPanel({
           </button>
         </div>
         <div className="mt-6 border-t border-slate-800 pt-6">
-          <h2 className="text-2xl font-extrabold text-white">Validation SOP</h2>
-          <p className="mt-2 text-base italic text-slate-200">Section 3.2: Audit Trail Requirements</p>
+          <h2 className="text-2xl font-extrabold text-white">{title}</h2>
+          <p className="mt-2 text-base italic text-slate-200">{type}</p>
         </div>
-        <div className="mt-8 rounded-lg border border-slate-600 bg-[#081024] p-6 text-base leading-8 text-slate-200">
-          Audit trails for validated systems must record user identity, timestamp, action, prior value, new value,
-          and reviewer decision. Access controls must be reviewed when authentication rules or session controls change.
+        <div className="mt-8 rounded-lg border border-slate-600 bg-[#081024] p-6 text-sm leading-8 text-slate-200">
+          <p className="text-xs font-bold uppercase text-slate-500 mb-2">Retrieved Snippet from Vector DB</p>
+          <div className="font-mono text-xs whitespace-pre-wrap max-h-60 overflow-y-auto p-3 bg-slate-950 rounded border border-slate-850">
+            {snippet}
+          </div>
         </div>
         <div className="mt-8 rounded-lg bg-[#0a132d] p-6">
           <p className="text-xs font-extrabold uppercase text-slate-400">Matched Regulation</p>
           <p className="mt-3 text-sm leading-6 text-slate-200">
-            {regulation?.title ?? "FDA mandatory multi-factor authentication and session idle timeout requirements"}
+            {regulation?.title ?? "FDA Regulatory Update"}
           </p>
         </div>
         <div className="mt-8">
-          <p className="text-xs font-extrabold uppercase text-slate-400">Why Flagged</p>
+          <p className="text-xs font-extrabold uppercase text-slate-400">Compliance Gap Explanation</p>
           <p className="mt-3 text-base leading-7 text-slate-300">
-            The current SOP covers audit trail capture, but it does not explicitly bind audit evidence to MFA and idle timeout
-            configuration. The remediation draft closes that traceability gap.
+            {explanation}
           </p>
         </div>
       </aside>

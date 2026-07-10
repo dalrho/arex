@@ -167,8 +167,9 @@ export function runImpactAssessment(regulationId: string): Promise<ImpactRespons
   return sendJson(`/impact/regulation/${regulationId}/assess`, "POST");
 }
 
-export function listRemediations(): Promise<RemediationResponse[]> {
-  return getJson("/remediation");
+export function listRemediations(regulationId?: string): Promise<RemediationResponse[]> {
+  const query = regulationId ? `?regulation_id=${regulationId}` : "";
+  return getJson(`/remediation${query}`);
 }
 
 export function getRemediation(id: string): Promise<RemediationResponse> {
@@ -177,9 +178,17 @@ export function getRemediation(id: string): Promise<RemediationResponse> {
 
 export function updateRemediation(
   id: string,
-  proposedText: string
+  proposedText: string,
+  comments?: string
 ): Promise<RemediationResponse> {
-  return sendJson(`/remediation/${id}`, "PUT", { proposed_text: proposedText });
+  return sendJson(`/remediation/${id}`, "PUT", {
+    proposed_text: proposedText,
+    comments: comments,
+  });
+}
+
+export function resetRemediation(id: string): Promise<RemediationResponse> {
+  return sendJson(`/remediation/${id}/reset`, "POST");
 }
 
 export function generateRemediationDrafts(
@@ -193,7 +202,7 @@ export function generateRemediationDrafts(
 
 export function submitApprovalDecision(
   remediationId: string,
-  decision: "APPROVED" | "REJECTED"
+  decision: string
 ): Promise<ApprovalRecordResponse> {
   return sendJson(`/approvals/remediation/${remediationId}`, "POST", { decision });
 }
@@ -210,20 +219,7 @@ export function updateTask(id: string, payload: TaskUpdatePayload): Promise<Task
   return sendJson(`/tasks/${id}`, "PUT", payload);
 }
 
-export async function downloadRemediationExport(
-  remediationId: string,
-  format: "pdf" | "docx"
-): Promise<void> {
-  const res = await fetch(`${API_BASE}/exports/remediation/${remediationId}/${format}`, {
-    headers: buildHeaders(),
-  });
-  if (!res.ok) throw await parseError(res);
 
-  const disposition = res.headers.get("Content-Disposition") ?? "";
-  const match = disposition.match(/filename=([^;]+)/);
-  const filename = match ? match[1].trim() : `remediation-report.${format}`;
-  triggerBlobDownload(await res.blob(), filename);
-}
 
 function triggerBlobDownload(blob: Blob, filename: string): void {
   const url = window.URL.createObjectURL(blob);
