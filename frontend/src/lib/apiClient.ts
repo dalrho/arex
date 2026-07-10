@@ -163,9 +163,8 @@ export function deleteDocument(id: string): Promise<void> {
   });
 }
 
-export async function fetchDocumentBlob(id: string, inline = false): Promise<Blob> {
-  const query = inline ? "?inline=true" : "";
-  const res = await fetch(`${API_BASE}/documents/${id}/download${query}`, {
+export async function fetchDocumentBlob(id: string): Promise<Blob> {
+  const res = await fetch(`${API_BASE}/documents/${id}/download`, {
     headers: buildHeaders(),
   });
   if (!res.ok) throw await parseError(res);
@@ -173,7 +172,7 @@ export async function fetchDocumentBlob(id: string, inline = false): Promise<Blo
 }
 
 export async function downloadDocument(id: string, filename: string): Promise<void> {
-  triggerBlobDownload(await fetchDocumentBlob(id, false), filename);
+  triggerBlobDownload(await fetchDocumentBlob(id), filename);
 }
 
 export function listRegulations(): Promise<RegulationResponse[]> {
