@@ -6,7 +6,6 @@ import { ArrowLeft, Download, FileText, Loader2 } from "lucide-react";
 import DocumentVersionTag from "@/components/documents/DocumentVersionTag";
 import DocumentViewer from "@/components/documents/DocumentViewer";
 import { downloadDocument, fetchDocumentBlob, getDocument } from "@/lib/apiClient";
-import { demoDocuments, getDemoDocumentContent } from "@/lib/demoData";
 import { formatDateTime } from "@/lib/format";
 import type { DocumentResponse } from "@/types/api";
 
@@ -26,8 +25,7 @@ export default function DocumentDetailPage({ params }: { params: { id: string } 
       const blob = await fetchDocumentBlob(doc.id);
       setPreviewBlob(blob);
     } catch {
-      const text = getDemoDocumentContent(doc.id);
-      setPreviewBlob(new Blob([text], { type: "text/plain" }));
+      setPreviewError("Failed to fetch document content preview.");
     } finally {
       setPreviewLoading(false);
     }
@@ -37,7 +35,7 @@ export default function DocumentDetailPage({ params }: { params: { id: string } 
     setLoading(true);
     getDocument(params.id)
       .then(setDocument)
-      .catch(() => setDocument(demoDocuments.find((item) => item.id === params.id) ?? demoDocuments[0]))
+      .catch(() => setDocument(null))
       .finally(() => setLoading(false));
   }, [params.id]);
 
@@ -52,16 +50,7 @@ export default function DocumentDetailPage({ params }: { params: { id: string } 
     try {
       await downloadDocument(document.id, document.filename);
     } catch {
-      const text = getDemoDocumentContent(document.id);
-      const blob = new Blob([text], { type: "text/plain" });
-      const url = window.URL.createObjectURL(blob);
-      const anchor = window.document.createElement("a");
-      anchor.href = url;
-      anchor.download = document.filename.replace(/\.[^.]+$/, ".txt");
-      window.document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      window.URL.revokeObjectURL(url);
+      alert("Failed to download document file.");
     } finally {
       setDownloading(false);
     }
