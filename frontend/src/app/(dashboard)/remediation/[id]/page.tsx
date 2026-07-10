@@ -18,14 +18,6 @@ import {
   submitApprovalDecision,
   updateRemediation,
 } from "@/lib/apiClient";
-import {
-  demoDocuments,
-  demoImpactForRegulation,
-  demoRegulations,
-  demoRemediationForId,
-  demoRemediationForRegulation,
-  demoTasks,
-} from "@/lib/demoData";
 import { formatDateTime } from "@/lib/format";
 import type {
   DocumentResponse,
@@ -118,7 +110,7 @@ export default function RemediationReviewPage({ params }: { params: { id: string
   const [railDrafts, setRailDrafts] = useState<RemediationResponse[]>(() => readCachedRailDrafts());
   const [document, setDocument] = useState<DocumentResponse | null>(null);
   const [regulation, setRegulation] = useState<RegulationResponse | null>(null);
-  const [regulations, setRegulations] = useState<RegulationResponse[]>(demoRegulations);
+  const [regulations, setRegulations] = useState<RegulationResponse[]>([]);
   const [impact, setImpact] = useState<ImpactResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [regulationsLoading, setRegulationsLoading] = useState(false);
@@ -133,9 +125,9 @@ export default function RemediationReviewPage({ params }: { params: { id: string
     setRegulationsLoading(true);
     try {
       const rows = await listRegulations();
-      setRegulations(rows.length > 0 ? rows : demoRegulations);
+      setRegulations(rows);
     } catch {
-      setRegulations(demoRegulations);
+      setRegulations([]);
     } finally {
       setRegulationsLoading(false);
     }
@@ -163,7 +155,7 @@ export default function RemediationReviewPage({ params }: { params: { id: string
       try {
         nextDraft = await getRemediation(params.id);
       } catch {
-        nextDraft = demoRemediationForId(params.id);
+        nextDraft = null;
       }
 
       if (!nextDraft) {
@@ -186,18 +178,10 @@ export default function RemediationReviewPage({ params }: { params: { id: string
 
       getDocument(nextDraft.document_id)
         .then((doc) => !cancelled && setDocument(doc))
-        .catch(
-          () =>
-            !cancelled &&
-            setDocument(demoDocuments.find((doc) => doc.id === nextDraft.document_id) ?? demoDocuments[0])
-        );
+        .catch(() => !cancelled && setDocument(null));
       getRegulation(nextDraft.regulation_id)
         .then((reg) => !cancelled && setRegulation(reg))
-        .catch(
-          () =>
-            !cancelled &&
-            setRegulation(demoRegulations.find((reg) => reg.id === nextDraft.regulation_id) ?? demoRegulations[0])
-        );
+        .catch(() => !cancelled && setRegulation(null));
 
       void loadRegulations();
       void loadRailDrafts();
@@ -239,7 +223,8 @@ export default function RemediationReviewPage({ params }: { params: { id: string
     try {
       setImpact(await runImpactAssessment(target.id));
     } catch {
-      setImpact(demoImpactForRegulation(target.id));
+      setImpact(null);
+      alert("Failed to run impact assessment.");
     } finally {
       await minimumAnimation;
       setAssessing(false);
@@ -252,10 +237,9 @@ export default function RemediationReviewPage({ params }: { params: { id: string
   }
 
   function handleOpenDraftForRegulation(target: RegulationResponse) {
-    const existingDraft =
+    const nextDraft =
       railDrafts.find((item) => item.regulation_id === target.id) ??
       (draft?.regulation_id === target.id ? draft : null);
-    const nextDraft = existingDraft ?? (hasCompletedAssessment(target, impact, null) ? demoRemediationForRegulation(target.id) : null);
 
     if (!nextDraft) return;
 
