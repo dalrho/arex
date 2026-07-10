@@ -139,8 +139,9 @@ export function deleteDocument(id: string): Promise<void> {
   });
 }
 
-export async function fetchDocumentBlob(id: string): Promise<Blob> {
-  const res = await fetch(`${API_BASE}/documents/${id}/download`, {
+export async function fetchDocumentBlob(id: string, inline = false): Promise<Blob> {
+  const query = inline ? "?inline=true" : "";
+  const res = await fetch(`${API_BASE}/documents/${id}/download${query}`, {
     headers: buildHeaders(),
   });
   if (!res.ok) throw await parseError(res);
@@ -148,7 +149,7 @@ export async function fetchDocumentBlob(id: string): Promise<Blob> {
 }
 
 export async function downloadDocument(id: string, filename: string): Promise<void> {
-  triggerBlobDownload(await fetchDocumentBlob(id), filename);
+  triggerBlobDownload(await fetchDocumentBlob(id, false), filename);
 }
 
 export function listRegulations(): Promise<RegulationResponse[]> {
@@ -219,20 +220,7 @@ export function updateTask(id: string, payload: TaskUpdatePayload): Promise<Task
   return sendJson(`/tasks/${id}`, "PUT", payload);
 }
 
-export async function downloadRemediationExport(
-  remediationId: string,
-  format: "pdf" | "docx"
-): Promise<void> {
-  const res = await fetch(`${API_BASE}/exports/remediation/${remediationId}/${format}`, {
-    headers: buildHeaders(),
-  });
-  if (!res.ok) throw await parseError(res);
 
-  const disposition = res.headers.get("Content-Disposition") ?? "";
-  const match = disposition.match(/filename=([^;]+)/);
-  const filename = match ? match[1].trim() : `remediation-report.${format}`;
-  triggerBlobDownload(await res.blob(), filename);
-}
 
 function triggerBlobDownload(blob: Blob, filename: string): void {
   const url = window.URL.createObjectURL(blob);

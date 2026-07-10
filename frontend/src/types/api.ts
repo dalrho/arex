@@ -17,6 +17,7 @@ export interface DocumentResponse {
   filename: string;
   file_path: string;
   version: number;
+  parsed_text?: string;
   created_at: string;
 }
 

@@ -57,10 +57,10 @@ async def upload_document(
     # 2. Validate File Type
     filename = file.filename
     _, ext = os.path.splitext(filename.lower())
-    if ext not in [".pdf", ".txt"]:
+    if ext not in [".pdf", ".txt", ".docx"]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Unsupported file format. Only PDF and TXT files are allowed."
+            detail="Unsupported file format. Only PDF, TXT and DOCX files are allowed."
         )
 
     # Reset file read cursor
@@ -81,6 +81,10 @@ async def upload_document(
     try:
         if ext == ".pdf":
             parsed_text = extract_text_from_pdf(file_path)
+        elif ext == ".docx":
+            import docx
+            doc = docx.Document(file_path)
+            parsed_text = "\n".join([p.text for p in doc.paragraphs])
         else:
             parsed_text = file_bytes.decode("utf-8", errors="replace")
     except Exception as e:
@@ -164,6 +168,7 @@ def list_documents(
 @router.get("/{document_id}/download")
 def download_document(
     document_id: uuid.UUID,
+    inline: bool = False,
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_tenant_id)
 ) -> Any:
@@ -172,6 +177,7 @@ def download_document(
     parsed text if the original binary is no longer available on disk.
     """
     from fastapi.responses import FileResponse, Response
+    import mimetypes
 
     org_id = uuid.UUID(tenant_id)
     document = db.query(Document).filter(
@@ -184,19 +190,35 @@ def download_document(
             detail="Document not found"
         )
 
+    # Determine media type dynamically
+    mime_type, _ = mimetypes.guess_type(document.filename)
+    if not mime_type:
+        if document.filename.lower().endswith(".pdf"):
+            mime_type = "application/pdf"
+        elif document.filename.lower().endswith(".txt"):
+            mime_type = "text/plain"
+        elif document.filename.lower().endswith(".docx"):
+            mime_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        else:
+            mime_type = "application/octet-stream"
+
+    disp_type = "inline" if inline else "attachment"
+
     if document.file_path and os.path.exists(document.file_path):
         return FileResponse(
             path=document.file_path,
             filename=document.filename,
-            media_type="application/octet-stream",
+            media_type=mime_type,
+            content_disposition_type=disp_type,
         )
 
     if document.parsed_text:
         fallback_name = os.path.splitext(document.filename)[0] + ".txt"
+        header_disp = "inline" if inline else "attachment"
         return Response(
             content=document.parsed_text,
             media_type="text/plain; charset=utf-8",
-            headers={"Content-Disposition": f'attachment; filename="{fallback_name}"'},
+            headers={"Content-Disposition": f'{header_disp}; filename="{fallback_name}"'},
         )
 
     raise HTTPException(

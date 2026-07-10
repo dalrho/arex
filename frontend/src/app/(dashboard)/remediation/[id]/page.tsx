@@ -12,7 +12,6 @@ import {
   Play,
   RefreshCw,
   XCircle,
-  FileDown,
   ChevronRight,
   ClipboardList
 } from "lucide-react";
@@ -29,8 +28,7 @@ import {
   runImpactAssessment,
   submitApprovalDecision,
   updateRemediation,
-  resetRemediation,
-  downloadRemediationExport
+  resetRemediation
 } from "@/lib/apiClient";
 import { formatDateTime } from "@/lib/format";
 import type {
@@ -335,13 +333,7 @@ export default function RemediationReviewPage({ params }: { params: { id: string
     }
   }
 
-  async function handleDownloadExport(draftId: string, format: "pdf" | "docx") {
-    try {
-      await downloadRemediationExport(draftId, format);
-    } catch (err: any) {
-      alert(err.message || `Failed to download ${format.toUpperCase()} export.`);
-    }
-  }
+
 
   const selectedRegulationId = regulation?.id ?? null;
   const allApproved = drafts.length > 0 && drafts.every((d) => d.status === "APPROVED");
@@ -439,7 +431,6 @@ export default function RemediationReviewPage({ params }: { params: { id: string
                       onSubmitForReview={() => void handleDecision(draftItem.id, "UNDER_REVIEW")}
                       onEdit={() => openEditModal(draftItem)}
                       onReset={() => void handleResetDraft(draftItem.id)}
-                      onExport={(format) => void handleDownloadExport(draftItem.id, format)}
                     />
                   );
                 })}
@@ -528,7 +519,6 @@ interface DraftCardProps {
   onSubmitForReview: () => void;
   onEdit: () => void;
   onReset: () => void;
-  onExport: (format: "pdf" | "docx") => void;
 }
 
 function DraftCard({
@@ -540,8 +530,7 @@ function DraftCard({
   onReject,
   onSubmitForReview,
   onEdit,
-  onReset,
-  onExport
+  onReset
 }: DraftCardProps) {
   const currentStatus = (draft.status || "Draft").toUpperCase();
   const isApproved = currentStatus === "APPROVED";
@@ -629,22 +618,6 @@ function DraftCard({
           <>
             {isApproved && (
               <>
-                <button
-                  type="button"
-                  onClick={() => onExport("pdf")}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-900 px-4 text-xs font-bold text-slate-200 hover:bg-slate-800 transition"
-                >
-                  <FileDown className="h-3.5 w-3.5" />
-                  PDF
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onExport("docx")}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-900 px-4 text-xs font-bold text-slate-200 hover:bg-slate-800 transition"
-                >
-                  <FileDown className="h-3.5 w-3.5" />
-                  Word
-                </button>
                 <button
                   type="button"
                   onClick={onReset}

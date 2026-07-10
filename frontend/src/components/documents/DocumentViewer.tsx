@@ -9,12 +9,14 @@ interface DocumentViewerProps {
   loading: boolean;
   error: string | null;
   onRetry?: () => void;
+  parsedText?: string;
 }
 
-function getFileKind(filename: string): "pdf" | "text" | "unknown" {
+function getFileKind(filename: string): "pdf" | "text" | "docx" | "unknown" {
   const ext = filename.split(".").pop()?.toLowerCase();
   if (ext === "pdf") return "pdf";
   if (ext === "txt") return "text";
+  if (ext === "docx") return "docx";
   return "unknown";
 }
 
@@ -24,6 +26,7 @@ export default function DocumentViewer({
   loading,
   error,
   onRetry,
+  parsedText,
 }: DocumentViewerProps) {
   const fileKind = useMemo(() => getFileKind(filename), [filename]);
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
@@ -43,21 +46,42 @@ export default function DocumentViewer({
       return () => window.URL.revokeObjectURL(url);
     }
 
-    if (fileKind === "text" || fileKind === "unknown") {
+    if (fileKind === "docx") {
+      if (parsedText) {
+        setTextContent(parsedText);
+      } else {
+        setTextContent("No parsed content preview available for this document.");
+      }
+      return;
+    }
+
+    if (fileKind === "text") {
       let cancelled = false;
       void blob.text().then(
         (text) => {
           if (!cancelled) setTextContent(text);
         },
         () => {
-          if (!cancelled) setRenderError("Unable to read document content.");
+          if (!cancelled) {
+            if (parsedText) {
+              setTextContent(parsedText);
+            } else {
+              setRenderError("Unable to read document content.");
+            }
+          }
         }
       );
       return () => {
         cancelled = true;
       };
     }
-  }, [blob, fileKind]);
+
+    if (fileKind === "unknown") {
+      if (parsedText) {
+        setTextContent(parsedText);
+      }
+    }
+  }, [blob, fileKind, parsedText]);
 
   if (loading) {
     return (
