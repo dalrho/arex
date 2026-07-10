@@ -22,7 +22,7 @@ export default function DocumentDetailPage({ params }: { params: { id: string } 
     setPreviewError(null);
     setPreviewBlob(null);
     try {
-      const blob = await fetchDocumentBlob(doc.id);
+      const blob = await fetchDocumentBlob(doc.id, true);
       setPreviewBlob(blob);
     } catch {
       setPreviewError("Failed to fetch document content preview.");
@@ -102,6 +102,7 @@ export default function DocumentDetailPage({ params }: { params: { id: string } 
                 blob={previewBlob}
                 loading={previewLoading}
                 error={previewError}
+                parsedText={document.parsed_text}
                 onRetry={() => void loadPreview(document)}
               />
             </div>
