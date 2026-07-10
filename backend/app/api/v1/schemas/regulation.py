@@ -12,6 +12,7 @@ class RegulationResponse(BaseModel):
     parsed_sections: Optional[Any] = None
     hash_value: str
     status: str
+    audit_history: Optional[List[Dict[str, Any]]] = None
     created_at: datetime
     
     # AI agent verdicts

@@ -1,11 +1,11 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { Loader2, MoreHorizontal, Plus, Search } from "lucide-react";
+import { Loader2, MoreHorizontal, Plus, Search, RefreshCw } from "lucide-react";
 import clsx from "clsx";
 import Modal from "@/components/ui/Modal";
 import StatusBadge from "@/components/ui/StatusBadge";
-import { createTask, listRegulations, listTasks, updateTask } from "@/lib/apiClient";
+import { createTask, listRegulations, listTasks, updateTask, syncTasksToJira } from "@/lib/apiClient";
 import { demoRegulations, demoTasks } from "@/lib/demoData";
 import type { RegulationResponse, TaskResponse } from "@/types/api";
 
@@ -24,6 +24,8 @@ export default function TasksPage() {
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [form, setForm] = useState({
     title: "",
     description: "",
@@ -53,8 +55,9 @@ export default function TasksPage() {
 
   const visible = useMemo(() => {
     const query = search.trim().toLowerCase();
-    if (!query) return tasks;
-    return tasks.filter(
+    const activeTasks = tasks.filter((t) => t.status !== "REJECTED");
+    if (!query) return activeTasks;
+    return activeTasks.filter(
       (task) =>
         task.title.toLowerCase().includes(query) ||
         task.description.toLowerCase().includes(query) ||
@@ -71,8 +74,8 @@ export default function TasksPage() {
     return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b));
   }, [visible]);
 
-  const openCount = tasks.filter((task) => task.status !== "DONE").length;
-  const departments = Array.from(new Set(tasks.map((task) => task.department || "Unassigned")));
+  const openCount = tasks.filter((task) => task.status !== "DONE" && task.status !== "REJECTED").length;
+  const departments = Array.from(new Set(tasks.filter((t) => t.status !== "REJECTED").map((task) => task.department || "Unassigned")));
 
   async function handleStatusChange(task: TaskResponse, status: string) {
     setUpdatingId(task.id);
@@ -124,21 +127,65 @@ export default function TasksPage() {
     }
   }
 
+  async function handleSyncJira() {
+    setSyncing(true);
+    setSyncMessage(null);
+    try {
+      const res = await syncTasksToJira();
+      setSyncMessage(res.message);
+      setTimeout(() => {
+        setSyncMessage(null);
+      }, 5000);
+    } catch {
+      setSyncMessage("Failed to sync tasks to Jira.");
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   return (
     <div className="h-full overflow-y-auto bg-[#020613]">
       <main className="px-6 py-6 md:px-10">
         <div className="mx-auto max-w-7xl">
+          {syncMessage && (
+            <div className={clsx(
+              "mb-6 p-4 rounded-lg border flex items-center justify-between text-sm transition-all duration-300",
+              syncMessage.includes("Failed") 
+                ? "bg-rose-500/10 border-rose-500/30 text-rose-200" 
+                : "bg-emerald-500/10 border-emerald-500/30 text-emerald-200"
+            )}>
+              <span>{syncMessage}</span>
+              <button 
+                type="button" 
+                onClick={() => setSyncMessage(null)}
+                className="text-slate-400 hover:text-white font-bold"
+              >
+                ✕
+              </button>
+            </div>
+          )}
           <div className="mb-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(360px,0.7fr)] lg:items-end">
             <div>
               <h1 className="text-2xl font-extrabold text-white">Implementation Tasks</h1>
-              <button
-                type="button"
-                onClick={() => setCreateOpen(true)}
-                className="mt-6 inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-8 text-sm font-bold text-white hover:bg-blue-500"
-              >
-                <Plus className="h-5 w-5" />
-                Create Task
-              </button>
+              <div className="flex flex-wrap gap-4 mt-6">
+                <button
+                  type="button"
+                  onClick={() => setCreateOpen(true)}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-6 text-sm font-bold text-white hover:bg-blue-500"
+                >
+                  <Plus className="h-5 w-5" />
+                  Create Task
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleSyncJira()}
+                  disabled={syncing}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-700 bg-[#081024] px-6 text-sm font-bold text-slate-200 hover:bg-slate-900 disabled:opacity-60"
+                >
+                  {syncing ? <Loader2 className="h-5 w-5 animate-spin" /> : <RefreshCw className="h-5 w-5" />}
+                  Sync to Jira
+                </button>
+              </div>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-[190px_minmax(0,1fr)]">
@@ -193,36 +240,65 @@ export default function TasksPage() {
                     {departmentTasks.map((task) => (
                       <article key={task.id} className="rounded-lg border border-slate-800 bg-[#040817] p-5">
                         <div className="flex items-start justify-between gap-4">
-                          <h3 className="text-base font-extrabold leading-6 text-white">{task.title}</h3>
-                          <StatusBadge label={task.priority} tone={task.priority.toLowerCase() === "high" ? "red" : undefined} />
+                          <div>
+                            <h3 className="text-base font-extrabold leading-6 text-white">{task.title}</h3>
+                            <p className="mt-2 text-xs text-slate-400 leading-normal">{task.description}</p>
+                          </div>
+                          <div className="flex flex-col items-end gap-1.5 shrink-0">
+                            <StatusBadge label={task.priority} tone={task.priority.toLowerCase() === "high" || task.priority.toLowerCase() === "critical" ? "red" : undefined} />
+                            <StatusBadge
+                              label={task.status.replace(/_/g, " ")}
+                              tone={task.status === "PENDING_APPROVAL" ? "amber" : task.status === "DONE" ? "emerald" : "blue"}
+                            />
+                          </div>
                         </div>
                         <div className="mt-6 space-y-4 text-sm text-slate-400">
                           <TaskMeta label="Source Regulation" value={sourceTitle(task.regulation_id, regulations)} />
-                          <TaskMeta label="Status" value={task.status.replace("_", " ")} />
                           <TaskMeta label="Traceability" value={task.remediation_draft_id ? task.remediation_draft_id.slice(0, 8).toUpperCase() : "Manual task"} />
                         </div>
-                        <div className="mt-6 flex flex-wrap gap-2">
-                          {STATUSES.map((status) => (
+                        {task.status === "PENDING_APPROVAL" ? (
+                          <div className="mt-6 flex gap-2 w-full">
                             <button
-                              key={status}
                               type="button"
                               disabled={updatingId === task.id}
-                              onClick={() => void handleStatusChange(task, status)}
-                              className={clsx(
-                                "h-8 rounded-md border px-2 text-xs font-bold",
-                                task.status === status
-                                  ? "border-blue-500 bg-blue-500/15 text-blue-200"
-                                  : "border-slate-700 text-slate-400 hover:bg-slate-900"
-                              )}
+                              onClick={() => void handleStatusChange(task, "TODO")}
+                              className="flex-1 h-8 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition flex items-center justify-center gap-1.5"
                             >
-                              {updatingId === task.id && task.status === status ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              ) : (
-                                status.replace("_", " ")
-                              )}
+                              Approve
                             </button>
-                          ))}
-                        </div>
+                            <button
+                              type="button"
+                              disabled={updatingId === task.id}
+                              onClick={() => void handleStatusChange(task, "REJECTED")}
+                              className="flex-1 h-8 rounded-md bg-rose-600/20 hover:bg-rose-600/35 border border-rose-500/30 text-rose-200 text-xs font-bold transition flex items-center justify-center gap-1.5"
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="mt-6 flex flex-wrap gap-2">
+                            {STATUSES.map((status) => (
+                              <button
+                                key={status}
+                                type="button"
+                                disabled={updatingId === task.id}
+                                onClick={() => void handleStatusChange(task, status)}
+                                className={clsx(
+                                  "h-8 rounded-md border px-2 text-xs font-bold",
+                                  task.status === status
+                                    ? "border-blue-500 bg-blue-500/15 text-blue-200"
+                                    : "border-slate-700 text-slate-400 hover:bg-slate-900"
+                                )}
+                              >
+                                {updatingId === task.id && task.status === status ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  status.replace("_", " ")
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </article>
                     ))}
                   </div>

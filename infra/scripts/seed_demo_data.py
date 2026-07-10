@@ -18,11 +18,13 @@ from app.db.base import Base
 from app.models.organization import Organization
 from app.models.user import User
 from app.models.document import Document
+from app.models.document_version import DocumentVersion
 from app.models.regulation_update import RegulationUpdate
 from app.models.impact_assessment import ImpactAssessment
 from app.models.remediation_draft import RemediationDraft
 from app.models.implementation_task import ImplementationTask
 from app.models.approval_record import ApprovalRecord
+
 from app.services.embeddings.embedding_service import embedding_service
 from app.services.vector_db.qdrant_client import vector_db_client
 
@@ -139,6 +141,7 @@ def seed_database():
         db.query(ImplementationTask).delete()
         db.query(RemediationDraft).delete()
         db.query(ImpactAssessment).delete()
+        db.query(DocumentVersion).delete()
         db.query(Document).delete()
         db.query(User).delete()
         db.query(RegulationUpdate).delete()
@@ -210,6 +213,19 @@ def seed_database():
             doc_models.append(doc)
             db.flush()  # populate ID
 
+            # Create document version history entry
+            db_version = DocumentVersion(
+                id=uuid.uuid4(),
+                document_id=doc.id,
+                version=1,
+                filename=filename,
+                file_path=file_path,
+                parsed_text=text,
+                reason_for_revision="Initial upload",
+                created_at=doc.created_at
+            )
+            db.add(db_version)
+
             # Chunk text and embed
             logger.info(f"Chunking and embedding {filename}...")
             text_chunks = chunk_text(text, chunk_size=150, overlap=30)
@@ -260,6 +276,9 @@ def seed_database():
         db.commit()
         logger.info("Seeded regulation: Part 11 MFA & Session Timeout Amendment")
 
+        # Find the SOP-101 document model to map remediation draft
+        sop_101_model = [d for d in doc_models if d.filename == "SOP-101.txt"][0]
+
         # 6. Seed Impact Assessment
         impact = ImpactAssessment(
             id=uuid.uuid4(),
@@ -273,13 +292,21 @@ def seed_database():
                 "a 30-minute idle session timeout. This constitutes a high-priority compliance gap requiring immediate revision."
             ),
             affected_departments=["IT Department", "Quality Assurance"],
+            affected_documents=[
+                {
+                    "document_id": str(sop_101_model.id),
+                    "document_name": "SOP-101.txt",
+                    "document_type": "SOP",
+                    "affected_sections": "3.2 Session Timeout: Computer terminals and software applications must automatically log out a user or lock the display terminal after 30 minutes of continuous keyboard or mouse inactivity.",
+                    "explanation": "Our current SOP-101 permits a 30-minute idle session timeout and does not specify MFA controls, creating a direct compliance gap.",
+                    "confidence_score": 95.0
+                }
+            ],
             status="pending",
             created_at=datetime.now(timezone.utc)
         )
         db.add(impact)
 
-        # Find the SOP-101 document model to map remediation draft
-        sop_101_model = [d for d in doc_models if d.filename == "SOP-101.txt"][0]
 
         # 7. Seed Remediation Draft
         proposed_remediation_text = SOP_101_TEXT.replace(
@@ -305,6 +332,7 @@ def seed_database():
                     "after 30 minutes of continuous keyboard or mouse inactivity."
                 ]
             },
+            explanation="Updates password policy to mandate MFA and reduces idle session timeouts to 15 minutes to satisfy Part 11 requirements.",
             status="PENDING_REVIEW",
             reviewer_id=None,
             reviewed_at=None,

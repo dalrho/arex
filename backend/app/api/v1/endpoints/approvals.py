@@ -8,8 +8,11 @@ import os
 from app.core.dependencies import get_db, get_current_user
 from app.models.remediation_draft import RemediationDraft
 from app.models.document import Document
+from app.models.document_version import DocumentVersion
+from app.models.regulation_update import RegulationUpdate
 from app.models.approval_record import ApprovalRecord
 from app.models.user import User
+
 from app.api.v1.schemas.approval import ApprovalDecisionRequest, ApprovalRecordResponse
 from app.services.embeddings.embedding_service import embedding_service
 from app.services.vector_db.qdrant_client import vector_db_client
@@ -106,6 +109,31 @@ def submit_approval_decision(
             except OSError:
                 pass
 
+            # Create document version history entry
+            reg = db.query(RegulationUpdate).filter(RegulationUpdate.id == draft.regulation_id).first()
+            reg_title = reg.title if reg else "FDA Regulation Update"
+            reason = f"Remediated due to regulation update: {reg_title}"
+
+            db_version = DocumentVersion(
+                id=uuid.uuid4(),
+                document_id=doc.id,
+                version=doc.version,
+                filename=doc.filename,
+                file_path=doc.file_path,
+                parsed_text=draft.proposed_text,
+                reason_for_revision=reason,
+                created_at=datetime.now(timezone.utc)
+            )
+            db.add(db_version)
+            
+            if reg:
+                reg.status = "Draft Approved"
+                db.add(reg)
+
+            from app.core.audit import add_audit_event
+            add_audit_event(db, draft.regulation_id, "draft_approved", f"Remediation draft for '{doc.filename}' approved.")
+            add_audit_event(db, draft.regulation_id, "document_updated", f"Document '{doc.filename}' updated to Version {doc.version}.")
+
             # Sync Qdrant vector index
             try:
                 # Delete old document vectors
@@ -128,6 +156,21 @@ def submit_approval_decision(
                 pass
 
             db.add(doc)
+
+    elif decision == "REJECTED":
+        reg = db.query(RegulationUpdate).filter(RegulationUpdate.id == draft.regulation_id).first()
+        if reg:
+            reg.status = "Impact Assessment Complete"
+            db.add(reg)
+            
+        from app.core.audit import add_audit_event
+        doc = db.query(Document).filter(Document.id == draft.document_id).first()
+        doc_name = doc.filename if doc else str(draft.document_id)
+        add_audit_event(db, draft.regulation_id, "draft_rejected", f"Remediation draft for '{doc_name}' rejected. Discarding drafts.")
+        
+        # Discard drafts
+        db.query(RemediationDraft).filter(RemediationDraft.regulation_id == draft.regulation_id).delete()
+
 
     # 3. Write immutable audit record log (21 CFR Part 11)
     record = ApprovalRecord(

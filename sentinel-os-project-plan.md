@@ -271,7 +271,7 @@ sentinel-os/
   - Sub-task: tune retrieval threshold to avoid false positives/negatives; document tuning rationale in ADR.
 
 ---
-
+  
 ### EPIC 5 — Compliance Dashboard
 **Goal:** Central UI for QA Manager to review everything.
 
