@@ -1,11 +1,13 @@
 import type {
   ApprovalRecordResponse,
   AuthUser,
+  DataStats,
   DocumentResponse,
   ImpactResponse,
   LoginResponse,
   RegulationResponse,
   RemediationResponse,
+  ResetResponse,
   TaskCreatePayload,
   TaskResponse,
   TaskUpdatePayload,
@@ -253,4 +255,53 @@ export function updateRegulationStatus(
 
 export function getAiStatus(): Promise<AIStatusResponse> {
   return getJson<AIStatusResponse>("/ai-status");
+}
+
+// ---------------------------------------------------------------------------
+// Regulation document upload
+// ---------------------------------------------------------------------------
+
+export interface UploadRegulationPayload {
+  file: File;
+  title: string;
+  regulatory_authority: string;
+  document_number?: string;
+  published_date?: string;
+  category?: string;
+  effective_date?: string;
+  summary?: string;
+}
+
+export function uploadRegulation(payload: UploadRegulationPayload): Promise<RegulationResponse> {
+  const formData = new FormData();
+  formData.append("file", payload.file);
+  formData.append("title", payload.title);
+  formData.append("regulatory_authority", payload.regulatory_authority);
+  if (payload.document_number) formData.append("document_number", payload.document_number);
+  if (payload.published_date) formData.append("published_date", payload.published_date);
+  if (payload.category) formData.append("category", payload.category);
+  if (payload.effective_date) formData.append("effective_date", payload.effective_date);
+  if (payload.summary) formData.append("summary", payload.summary);
+  return request<RegulationResponse>("/regulations/upload", {
+    method: "POST",
+    headers: buildHeaders(),
+    body: formData,
+  });
+}
+
+export function fetchRegulationsFromFDA(limit?: number): Promise<{ status: string; ingested_count: number }> {
+  const params = limit ? `?limit=${limit}` : "";
+  return sendJson(`/regulations/poll${params}`, "POST");
+}
+
+// ---------------------------------------------------------------------------
+// Admin / Data Management
+// ---------------------------------------------------------------------------
+
+export function getAdminStats(): Promise<DataStats> {
+  return getJson<DataStats>("/admin/stats");
+}
+
+export function resetApplicationData(): Promise<ResetResponse> {
+  return sendJson<ResetResponse>("/admin/reset", "POST", { confirmation: "RESET" });
 }

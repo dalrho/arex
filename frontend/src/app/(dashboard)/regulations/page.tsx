@@ -2,7 +2,7 @@
 
 import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CheckCircle2, Clock3, FileText, Link2, Loader2, Play, RefreshCw, ShieldCheck, X } from "lucide-react";
+import { CheckCircle2, Clock3, FileText, Link2, Loader2, Play, RefreshCw, ShieldCheck, Upload, X } from "lucide-react";
 import clsx from "clsx";
 import AssessmentLoadingView from "@/components/assessments/AssessmentLoadingView";
 import StatusBadge from "@/components/ui/StatusBadge";
@@ -16,8 +16,10 @@ import {
   generateImplementationTasks,
   updateRegulationStatus,
   listTasks,
+  fetchRegulationsFromFDA,
+  uploadRegulation,
+  type UploadRegulationPayload,
 } from "@/lib/apiClient";
-import { demoImpactForRegulation, demoRegulations, demoRemediationsForRegulation } from "@/lib/demoData";
 import { formatDate, getAccountDisplayName } from "@/lib/format";
 import type { AuthUser, ImpactResponse, RegulationResponse, TaskResponse } from "@/types/api";
 
@@ -81,7 +83,7 @@ function RegulationsPage() {
     }
   }, [searchParams]);
 
-  const [regulations, setRegulations] = useState<RegulationResponse[]>(demoRegulations);
+  const [regulations, setRegulations] = useState<RegulationResponse[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [openedId, setOpenedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -98,6 +100,9 @@ function RegulationsPage() {
   const [user, setUser] = useState<AuthUser | null>(() => getCurrentUser());
   const [selectedCaseImpact, setSelectedCaseImpact] = useState<ImpactResponse | null>(null);
   const [selectedCaseImpactLoading, setSelectedCaseImpactLoading] = useState(false);
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [fetchingFDA, setFetchingFDA] = useState(false);
+  const [fetchMsg, setFetchMsg] = useState<string | null>(null);
 
   useEffect(() => {
     setUser(getCurrentUser());
@@ -107,23 +112,32 @@ function RegulationsPage() {
     setLoading(true);
     try {
       const rows = await listRegulations();
-      const nextRows = rows.length > 0 ? rows : demoRegulations;
-      nextRows.sort((a, b) => new Date(b.published_date).getTime() - new Date(a.published_date).getTime());
-      setRegulations(nextRows);
-      setSelectedId((current) => (current && nextRows.some((row) => row.id === current) ? current : null));
-      setOpenedId((current) => (current && nextRows.some((row) => row.id === current) ? current : null));
+      rows.sort((a, b) => new Date(b.published_date).getTime() - new Date(a.published_date).getTime());
+      setRegulations(rows);
+      setSelectedId((current) => (current && rows.some((row) => row.id === current) ? current : null));
+      setOpenedId((current) => (current && rows.some((row) => row.id === current) ? current : null));
     } catch {
-      setRegulations(demoRegulations);
-      setSelectedId((current) => (current && demoRegulations.some((row) => row.id === current) ? current : null));
-      setOpenedId((current) => (current && demoRegulations.some((row) => row.id === current) ? current : null));
+      // Backend unreachable — show empty state, not demo data
+      setRegulations([]);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useEffect(() => { void load(); }, [load]);
+
+  async function handleFetchFromFDA() {
+    setFetchingFDA(true);
+    try {
+      const res = await fetchRegulationsFromFDA(10);
+      setFetchMsg(`Fetched ${res.ingested_count} new regulation(s) from the FDA.`);
+      void load();
+    } catch (err: any) {
+      setFetchMsg(err?.message || "Failed to fetch from FDA.");
+    } finally {
+      setFetchingFDA(false);
+    }
+  }
 
   const selectedRailRegulation = useMemo(
     () => regulations.find((regulation) => regulation.id === selectedId) ?? null,
@@ -195,9 +209,7 @@ function RegulationsPage() {
         if (!cancelled) setSelectedCaseImpact(res);
       })
       .catch(() => {
-        if (!cancelled && hasCompletedAssessment(selectedRailRegulation, null)) {
-          setSelectedCaseImpact(demoImpactForRegulation(selectedRailRegulation.id));
-        }
+        if (!cancelled) setSelectedCaseImpact(null);
       })
       .finally(() => {
         if (!cancelled) setSelectedCaseImpactLoading(false);
@@ -226,18 +238,8 @@ function RegulationsPage() {
       } else {
         setSelectedDocIds([]);
       }
-    } catch {
-      const demoRes = demoImpactForRegulation(regulation.id);
-      setImpact(demoRes);
-      setSelectedCaseImpact(demoRes);
-      setRegulations((prev) =>
-        prev.map((item) => (item.id === regulation.id ? markRegulationAssessed(item) : item))
-      );
-      if (demoRes.affected_documents) {
-        setSelectedDocIds(demoRes.affected_documents.map((d: any) => d.document_id));
-      } else {
-        setSelectedDocIds([]);
-      }
+    } catch (err: any) {
+      alert(err?.message || "Impact assessment failed. Please check the backend connection.");
     } finally {
       await minimumAnimation;
       setAssessing(false);
@@ -269,13 +271,12 @@ function RegulationsPage() {
         documentIds.length > 0 ? documentIds : undefined
       );
       const scopedDrafts = created.filter((draft) => draft.regulation_id === regulation.id);
-      const nextDrafts = scopedDrafts.length > 0 ? scopedDrafts : demoRemediationsForRegulation(regulation.id);
-      setRemediationDrafts(nextDrafts);
-      router.push(`/remediation/${nextDrafts[0].id}`);
-    } catch {
-      const nextDrafts = demoRemediationsForRegulation(regulation.id);
-      setRemediationDrafts(nextDrafts);
-      router.push(`/remediation/${nextDrafts[0].id}`);
+      if (scopedDrafts.length > 0) {
+        setRemediationDrafts(scopedDrafts);
+        router.push(`/remediation/${scopedDrafts[0].id}`);
+      }
+    } catch (err: any) {
+      alert(err?.message || "Failed to generate remediation drafts.");
     } finally {
       setGenerating(false);
     }
@@ -383,16 +384,10 @@ function RegulationsPage() {
   return (
     <div className="flex h-full min-w-0 bg-[#020613]">
       <div className="min-w-0 flex-1 overflow-y-auto">
-        {successMsg && (
-          <div className="mx-6 mt-6 p-4 rounded-lg border bg-emerald-500/10 border-emerald-500/30 text-emerald-200 flex items-center justify-between text-sm transition-all duration-300">
-            <span>{successMsg}</span>
-            <button 
-              type="button" 
-              onClick={() => setSuccessMsg(null)}
-              className="text-slate-400 hover:text-white font-bold ml-4"
-            >
-              ✕
-            </button>
+        {(successMsg || fetchMsg) && (
+          <div className="mx-6 mt-6 p-4 rounded-lg border bg-emerald-500/10 border-emerald-500/30 text-emerald-200 flex items-center justify-between text-sm">
+            <span>{successMsg || fetchMsg}</span>
+            <button type="button" onClick={() => { setSuccessMsg(null); setFetchMsg(null); }} className="text-slate-400 hover:text-white font-bold ml-4">✕</button>
           </div>
         )}
         {assessing ? (
@@ -400,13 +395,17 @@ function RegulationsPage() {
         ) : !selected ? (
           <RegulationsHome
             welcomeName={getAccountDisplayName(user)}
+            hasRegulations={regulations.length > 0}
             selectedRegulation={selectedRailRegulation}
             canGenerateDrafts={canGenerateSelectedDrafts}
             checkingAssessment={selectedCaseImpactLoading}
             assessing={assessing}
             generating={generating}
+            fetchingFDA={fetchingFDA}
             onRunAssessment={() => void handleRunAssessment(selectedRailRegulation)}
             onGenerateDrafts={() => void handleGenerateDrafts(selectedRailRegulation)}
+            onFetchFromFDA={() => void handleFetchFromFDA()}
+            onUpload={() => setShowUploadModal(true)}
           />
         ) : (
           <section className="px-6 py-8 md:px-10">
@@ -710,39 +709,97 @@ function RegulationsPage() {
         regulations={regulations}
         selectedId={selectedId}
         loading={loading}
+        fetchingFDA={fetchingFDA}
         impact={impact}
         selectedImpact={selectedCaseImpact}
         assessing={assessing}
-        onFetch={() => void load()}
+        onFetch={() => void handleFetchFromFDA()}
+        onUpload={() => setShowUploadModal(true)}
         onSelect={handleRailSelect}
         onOpen={handleRailOpen}
         onRun={(regulation) => void handleRunAssessment(regulation)}
       />
 
       <CitationPanel open={citationOpen} onClose={() => setCitationOpen(false)} regulation={selected} />
+
+      {showUploadModal && (
+        <UploadRegulationModal
+          onClose={() => setShowUploadModal(false)}
+          onSuccess={(reg) => {
+            setShowUploadModal(false);
+            setRegulations((prev) => [reg, ...prev]);
+            setFetchMsg(`Regulation "${reg.title}" uploaded successfully.`);
+          }}
+        />
+      )}
     </div>
   );
 }
 
 function RegulationsHome({
   welcomeName,
+  hasRegulations,
   selectedRegulation,
   canGenerateDrafts,
   checkingAssessment,
   assessing,
   generating,
+  fetchingFDA,
   onRunAssessment,
   onGenerateDrafts,
+  onFetchFromFDA,
+  onUpload,
 }: {
   welcomeName: string;
+  hasRegulations: boolean;
   selectedRegulation: RegulationResponse | null;
   canGenerateDrafts: boolean;
   checkingAssessment: boolean;
   assessing: boolean;
   generating: boolean;
+  fetchingFDA: boolean;
   onRunAssessment: () => void;
   onGenerateDrafts: () => void;
+  onFetchFromFDA: () => void;
+  onUpload: () => void;
 }) {
+  // Empty state — no regulations in the database yet
+  if (!hasRegulations) {
+    return (
+      <section className="flex min-h-full items-center justify-center px-6 py-12">
+        <div className="w-full max-w-lg text-center">
+          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl border border-slate-700 bg-slate-800/50">
+            <FileText className="h-8 w-8 text-slate-500" />
+          </div>
+          <h1 className="text-2xl font-extrabold text-white">No regulations found</h1>
+          <p className="mt-3 text-sm text-slate-400">
+            Your regulatory database is empty. Get started by fetching guidance updates from the FDA or uploading a regulation document.
+          </p>
+          <div className="mt-8 flex flex-col items-stretch gap-3 sm:flex-row sm:justify-center">
+            <button
+              type="button"
+              onClick={onFetchFromFDA}
+              disabled={fetchingFDA}
+              className="inline-flex h-12 items-center justify-center gap-3 rounded-lg bg-blue-600 px-6 text-sm font-extrabold text-white shadow-[0_16px_40px_rgba(37,99,235,0.18)] hover:bg-blue-500 disabled:opacity-50"
+            >
+              {fetchingFDA ? <Loader2 className="h-5 w-5 animate-spin" /> : <RefreshCw className="h-5 w-5" />}
+              Fetch from FDA
+            </button>
+            <button
+              type="button"
+              onClick={onUpload}
+              className="inline-flex h-12 items-center justify-center gap-3 rounded-lg border border-slate-600 bg-slate-800 px-6 text-sm font-extrabold text-slate-200 hover:bg-slate-700"
+            >
+              <Upload className="h-5 w-5" />
+              Upload Regulation
+            </button>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  // Regulations exist — show workflow home
   const assessmentDisabled = !selectedRegulation || assessing;
   const draftsDisabled = !selectedRegulation || checkingAssessment || !canGenerateDrafts || generating;
 
@@ -773,20 +830,9 @@ function RegulationsHome({
             data-testid="home-generate-drafts"
             onClick={onGenerateDrafts}
             disabled={draftsDisabled}
-            title={
-              !selectedRegulation
-                ? "Select a regulation from the right rail first."
-                : !canGenerateDrafts
-                  ? "Run impact assessment before generating remediation drafts."
-                  : undefined
-            }
             className="inline-flex h-12 w-full items-center justify-center gap-3 rounded-lg border border-slate-300 bg-white px-6 text-sm font-extrabold text-slate-950 shadow-[0_16px_40px_rgba(255,255,255,0.08)] transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 sm:w-72"
           >
-            {checkingAssessment || generating ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
-            ) : (
-              <FileText className="h-5 w-5" />
-            )}
+            {checkingAssessment || generating ? <Loader2 className="h-5 w-5 animate-spin" /> : <FileText className="h-5 w-5" />}
             Generate Remediation Drafts
           </button>
         </div>
@@ -799,10 +845,12 @@ function RegulationRail({
   regulations,
   selectedId,
   loading,
+  fetchingFDA,
   impact,
   selectedImpact,
   assessing,
   onFetch,
+  onUpload,
   onSelect,
   onOpen,
   onRun,
@@ -810,84 +858,111 @@ function RegulationRail({
   regulations: RegulationResponse[];
   selectedId: string | null;
   loading: boolean;
+  fetchingFDA: boolean;
   impact: ImpactResponse | null;
   selectedImpact: ImpactResponse | null;
   assessing: boolean;
   onFetch: () => void;
+  onUpload: () => void;
   onSelect: (id: string) => void;
   onOpen: (id: string) => void;
   onRun: (regulation: RegulationResponse) => void;
 }) {
   return (
-    <aside className="hidden w-shell-rail flex-shrink-0 overflow-y-auto border-l border-slate-700 bg-[#020613] px-6 py-6 xl:block">
-      <div className="mb-6 flex justify-end">
+    <aside className="hidden w-shell-rail flex-shrink-0 overflow-y-auto border-l border-slate-700 bg-[#020613] px-4 py-6 xl:block">
+      {/* Action buttons */}
+      <div className="mb-5 flex flex-col gap-2">
         <button
           type="button"
           onClick={onFetch}
-          className="inline-flex h-10 items-center gap-3 rounded-lg bg-blue-600 px-7 text-sm font-bold text-white hover:bg-blue-500"
+          disabled={fetchingFDA}
+          className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-xs font-bold text-white hover:bg-blue-500 disabled:opacity-60"
         >
-          <RefreshCw className={clsx("h-5 w-5", loading && "animate-spin")} />
-          Fetch
+          <RefreshCw className={clsx("h-3.5 w-3.5", fetchingFDA && "animate-spin")} />
+          {fetchingFDA ? "Fetching…" : "Fetch from FDA"}
+        </button>
+        <button
+          type="button"
+          onClick={onUpload}
+          className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg border border-slate-600 bg-slate-800 px-4 text-xs font-bold text-slate-200 hover:bg-slate-700"
+        >
+          <Upload className="h-3.5 w-3.5" />
+          Upload Regulation
         </button>
       </div>
 
-      <div className="space-y-5">
-        {regulations.map((regulation) => {
-          const active = regulation.id === selectedId;
-          const activeImpact =
-            impact?.regulation_id === regulation.id
-              ? impact
-              : selectedImpact?.regulation_id === regulation.id
-                ? selectedImpact
-                : null;
-          const analyzed = hasCompletedAssessment(regulation, activeImpact);
-          const isClosed = normalizedStatus(regulation.status) === "closed";
-          const badgeLabel = isClosed ? "Closed Case" : displayStatusLabel(regulation, activeImpact);
-          const badgeTone = isClosed ? "emerald" : analyzed ? "emerald" : "amber";
-          return (
-            <article
-              key={regulation.id}
-              className={clsx(
-                "rounded-lg border bg-slate-800/90 p-4 transition",
-                active ? "border-blue-500 shadow-[0_0_0_1px_rgba(37,99,235,0.35)]" : "border-slate-700"
-              )}
-            >
-              <button
-                type="button"
-                data-testid={`regulation-card-${regulation.id}`}
-                onClick={() => onSelect(regulation.id)}
-                onDoubleClick={() => onOpen(regulation.id)}
-                aria-pressed={active}
-                className="block w-full text-left"
+      {loading ? (
+        <div className="flex items-center justify-center gap-2 py-8 text-slate-500 text-xs">
+          <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+        </div>
+      ) : regulations.length === 0 ? (
+        <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-5 text-center">
+          <p className="text-xs font-semibold text-slate-400">No regulations yet.</p>
+          <p className="mt-1 text-[11px] text-slate-600">Use the buttons above to add regulations.</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {regulations.map((regulation) => {
+            const active = regulation.id === selectedId;
+            const activeImpact =
+              impact?.regulation_id === regulation.id
+                ? impact
+                : selectedImpact?.regulation_id === regulation.id
+                  ? selectedImpact
+                  : null;
+            const analyzed = hasCompletedAssessment(regulation, activeImpact);
+            const isClosed = normalizedStatus(regulation.status) === "closed";
+            const badgeLabel = isClosed ? "Closed Case" : displayStatusLabel(regulation, activeImpact);
+            const badgeTone = isClosed ? "emerald" : analyzed ? "emerald" : "amber";
+            const isUpload = regulation.source === "DOCUMENT_UPLOAD";
+            return (
+              <article
+                key={regulation.id}
+                className={clsx(
+                  "rounded-lg border bg-slate-800/90 p-4 transition",
+                  active ? "border-blue-500 shadow-[0_0_0_1px_rgba(37,99,235,0.35)]" : "border-slate-700"
+                )}
               >
-                <h2 className="line-clamp-3 text-sm font-extrabold uppercase leading-5 text-white">
-                  {regulation.title}
-                </h2>
-                <p className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-slate-400">
-                  <Link2 className="h-3.5 w-3.5" />
-                  {hostFor(regulation.source_url)}
-                </p>
-              </button>
-              <div className="mt-3 flex items-center justify-between gap-3">
-                <StatusBadge label={badgeLabel} tone={badgeTone} />
                 <button
                   type="button"
-                  data-testid={`regulation-run-${regulation.id}`}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onRun(regulation);
-                  }}
-                  disabled={assessing || isClosed}
-                  className="inline-flex h-7 items-center gap-1.5 rounded-md bg-blue-600 px-3 text-[11px] font-bold text-white hover:bg-blue-500 disabled:opacity-60"
+                  data-testid={`regulation-card-${regulation.id}`}
+                  onClick={() => onSelect(regulation.id)}
+                  onDoubleClick={() => onOpen(regulation.id)}
+                  aria-pressed={active}
+                  className="block w-full text-left"
                 >
-                  {assessing && active ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3 fill-white" />}
-                  {analyzed ? "Rerun" : "Run"}
+                  <h2 className="line-clamp-3 text-sm font-extrabold uppercase leading-5 text-white">
+                    {regulation.title}
+                  </h2>
+                  <p className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-slate-400">
+                    {isUpload ? (
+                      <><Upload className="h-3 w-3" /> Uploaded Document</>
+                    ) : (
+                      <><Link2 className="h-3.5 w-3.5" />{hostFor(regulation.source_url)}</>
+                    )}
+                  </p>
                 </button>
-              </div>
-            </article>
-          );
-        })}
-      </div>
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <StatusBadge label={badgeLabel} tone={badgeTone} />
+                  <button
+                    type="button"
+                    data-testid={`regulation-run-${regulation.id}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onRun(regulation);
+                    }}
+                    disabled={assessing || isClosed}
+                    className="inline-flex h-7 items-center gap-1.5 rounded-md bg-blue-600 px-3 text-[11px] font-bold text-white hover:bg-blue-500 disabled:opacity-60"
+                  >
+                    {assessing && active ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3 fill-white" />}
+                    {analyzed ? "Rerun" : "Run"}
+                  </button>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
     </aside>
   );
 }
@@ -1148,6 +1223,169 @@ function CitationPanel({
           </p>
         </div>
       </aside>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Upload Regulation Modal
+// ---------------------------------------------------------------------------
+
+function UploadRegulationModal({
+  onClose,
+  onSuccess,
+}: {
+  onClose: () => void;
+  onSuccess: (reg: RegulationResponse) => void;
+}) {
+  const [file, setFile] = useState<File | null>(null);
+  const [title, setTitle] = useState("");
+  const [authority, setAuthority] = useState("FDA");
+  const [docNumber, setDocNumber] = useState("");
+  const [pubDate, setPubDate] = useState("");
+  const [category, setCategory] = useState("");
+  const [effectiveDate, setEffectiveDate] = useState("");
+  const [summary, setSummary] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function handleFile(f: File | null) {
+    if (!f) return;
+    setFile(f);
+    if (!title) setTitle(f.name.replace(/\.[^.]+$/, "").replace(/[-_]/g, " "));
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!file || !title.trim()) { setError("File and title are required."); return; }
+    setUploading(true);
+    setError(null);
+    try {
+      const reg = await uploadRegulation({
+        file,
+        title: title.trim(),
+        regulatory_authority: authority || "FDA",
+        document_number: docNumber || undefined,
+        published_date: pubDate || undefined,
+        category: category || undefined,
+        effective_date: effectiveDate || undefined,
+        summary: summary || undefined,
+      });
+      onSuccess(reg);
+    } catch (err: any) {
+      setError(err?.message || "Upload failed. Please try again.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4">
+      <div className="w-full max-w-lg rounded-2xl border border-slate-700 bg-[#08101e] shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-800 px-6 py-4">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-blue-400">Upload Regulation</p>
+            <h2 className="text-base font-extrabold text-white">Upload a Regulation Document</h2>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-md p-1.5 text-slate-500 hover:bg-slate-800 hover:text-white">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4 px-6 py-5 max-h-[75vh] overflow-y-auto">
+          {error && (
+            <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-2 text-xs text-rose-300">{error}</div>
+          )}
+
+          {/* File drop zone */}
+          <label className="block">
+            <p className="mb-1.5 text-xs font-bold uppercase tracking-wider text-slate-400">PDF / TXT File <span className="text-rose-400">*</span></p>
+            <div
+              className={clsx(
+                "flex flex-col items-center justify-center rounded-xl border-2 border-dashed p-6 text-center transition cursor-pointer",
+                file ? "border-blue-500/50 bg-blue-500/5" : "border-slate-700 bg-slate-900/40 hover:border-slate-600"
+              )}
+              onClick={() => document.getElementById("reg-file-input")?.click()}
+            >
+              {file ? (
+                <>
+                  <FileText className="h-8 w-8 text-blue-400 mb-2" />
+                  <p className="text-sm font-semibold text-white">{file.name}</p>
+                  <p className="text-xs text-slate-400 mt-1">{(file.size / 1024).toFixed(0)} KB</p>
+                </>
+              ) : (
+                <>
+                  <Upload className="h-8 w-8 text-slate-500 mb-2" />
+                  <p className="text-sm font-semibold text-slate-300">Click to select a file</p>
+                  <p className="text-xs text-slate-500 mt-1">PDF or TXT, up to 20 MB</p>
+                </>
+              )}
+            </div>
+            <input
+              id="reg-file-input"
+              type="file"
+              accept=".pdf,.txt"
+              className="hidden"
+              onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
+            />
+          </label>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="sm:col-span-2">
+              <p className="mb-1 text-xs font-bold uppercase tracking-wider text-slate-400">Title <span className="text-rose-400">*</span></p>
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="e.g. FDA Guidance on Electronic Records"
+                required
+                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white placeholder-slate-600 focus:border-blue-500/60 focus:outline-none"
+              />
+            </label>
+            <label>
+              <p className="mb-1 text-xs font-bold uppercase tracking-wider text-slate-400">Regulatory Authority</p>
+              <input type="text" value={authority} onChange={(e) => setAuthority(e.target.value)} placeholder="FDA"
+                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white placeholder-slate-600 focus:border-blue-500/60 focus:outline-none" />
+            </label>
+            <label>
+              <p className="mb-1 text-xs font-bold uppercase tracking-wider text-slate-400">Document Number</p>
+              <input type="text" value={docNumber} onChange={(e) => setDocNumber(e.target.value)} placeholder="e.g. FDA-2026-N-0001"
+                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white placeholder-slate-600 focus:border-blue-500/60 focus:outline-none" />
+            </label>
+            <label>
+              <p className="mb-1 text-xs font-bold uppercase tracking-wider text-slate-400">Publication Date</p>
+              <input type="date" value={pubDate} onChange={(e) => setPubDate(e.target.value)}
+                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-blue-500/60 focus:outline-none" />
+            </label>
+            <label>
+              <p className="mb-1 text-xs font-bold uppercase tracking-wider text-slate-400">Category</p>
+              <input type="text" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="e.g. Validation"
+                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white placeholder-slate-600 focus:border-blue-500/60 focus:outline-none" />
+            </label>
+            <label>
+              <p className="mb-1 text-xs font-bold uppercase tracking-wider text-slate-400">Effective Date</p>
+              <input type="date" value={effectiveDate} onChange={(e) => setEffectiveDate(e.target.value)}
+                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-blue-500/60 focus:outline-none" />
+            </label>
+            <label className="sm:col-span-2">
+              <p className="mb-1 text-xs font-bold uppercase tracking-wider text-slate-400">Summary</p>
+              <textarea value={summary} onChange={(e) => setSummary(e.target.value)} rows={3} placeholder="Brief description of this regulation…"
+                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white placeholder-slate-600 focus:border-blue-500/60 focus:outline-none resize-none" />
+            </label>
+          </div>
+
+          <div className="flex gap-3 pt-2 border-t border-slate-800">
+            <button type="button" onClick={onClose}
+              className="flex-1 rounded-lg border border-slate-700 bg-slate-800 py-2.5 text-sm font-bold text-slate-300 hover:bg-slate-700">
+              Cancel
+            </button>
+            <button type="submit" disabled={!file || !title.trim() || uploading}
+              className="flex-1 rounded-lg bg-blue-600 py-2.5 text-sm font-bold text-white hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+              {uploading ? <><Loader2 className="h-4 w-4 animate-spin" /> Uploading…</> : <><Upload className="h-4 w-4" /> Upload & Process</>}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
