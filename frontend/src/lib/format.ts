@@ -1,3 +1,14 @@
+import type { AuthUser } from "@/types/api";
+
+/** Derives a friendly display name from the account email. */
+export function getAccountDisplayName(user: AuthUser | null): string {
+  if (!user?.email) return "there";
+  const local = user.email.split("@")[0] ?? user.email;
+  const first = local.split(/[._-]/)[0] ?? local;
+  if (first.length <= 3) return first.toUpperCase();
+  return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
+}
+
 /** Formats an ISO timestamp as e.g. "May 15, 2025 10:24 AM". */
 export function formatDateTime(iso: string): string {
   const date = new Date(iso);

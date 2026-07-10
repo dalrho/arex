@@ -1,6 +1,3 @@
-// Hand-written TypeScript mirrors of the backend Pydantic schemas
-// (backend/app/api/v1/schemas/*). Keep in sync with the API.
-
 export interface AuthUser {
   id: string;
   email: string;
@@ -23,6 +20,13 @@ export interface DocumentResponse {
   created_at: string;
 }
 
+export interface AuditHistoryEvent {
+  event_type: string;
+  description: string;
+  timestamp: string;
+  user: string;
+}
+
 export interface RegulationResponse {
   id: string;
   source_url: string;
@@ -33,12 +37,21 @@ export interface RegulationResponse {
   hash_value: string;
   status: string;
   created_at: string;
-  // AI agent verdicts
   relevant?: boolean | null;
   category?: string | null;
-  urgency?: string | null; // "low" | "medium" | "high" | "critical"
+  urgency?: string | null;
   affected_business_areas?: string[] | null;
   rationale?: string | null;
+  audit_history?: AuditHistoryEvent[] | null;
+}
+
+export interface AffectedDocument {
+  document_id: string;
+  document_name: string;
+  document_type: string;
+  affected_sections: string;
+  explanation: string;
+  confidence_score: number;
 }
 
 export interface ImpactResponse {
@@ -51,6 +64,7 @@ export interface ImpactResponse {
   affected_departments: string[];
   status: string;
   created_at: string;
+  affected_documents?: AffectedDocument[];
 }
 
 export interface DiffContent {
@@ -71,7 +85,10 @@ export interface RemediationResponse {
   reviewer_id: string | null;
   reviewed_at: string | null;
   created_at: string;
+  explanation?: string | null;
+  requires_tasks?: boolean | null;
 }
+
 
 export interface ApprovalRecordResponse {
   id: string;
@@ -113,34 +130,4 @@ export interface TaskUpdatePayload {
   department?: string;
   priority?: string;
   status?: string;
-}
-
-export interface UserResponse {
-  id: string;
-  email: string;
-  role: string;
-  created_at: string;
-}
-
-export type DashboardActivityType =
-  | "document_uploaded"
-  | "regulation_monitored"
-  | "remediation_approved"
-  | "remediation_rejected";
-
-export interface DashboardActivity {
-  type: DashboardActivityType | string;
-  message: string;
-  timestamp: string;
-  meta: Record<string, string>;
-}
-
-export interface DashboardMetrics {
-  total_documents: number;
-  total_regulations: number;
-  pending_assessments: number;
-  pending_remediations: number;
-  open_tasks: number;
-  max_risk_score: number;
-  recent_activity: DashboardActivity[];
 }

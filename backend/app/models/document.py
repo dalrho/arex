@@ -20,3 +20,5 @@ class Document(Base):
     # Relationships
     organization: Mapped["Organization"] = relationship(back_populates="documents")
     remediation_drafts: Mapped[list["RemediationDraft"]] = relationship(back_populates="document", cascade="all, delete-orphan")
+    history: Mapped[list["DocumentVersion"]] = relationship(back_populates="document", cascade="all, delete-orphan", order_by="desc(DocumentVersion.version)")
+

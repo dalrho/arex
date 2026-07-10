@@ -10,6 +10,7 @@ from app.core.dependencies import get_db, get_tenant_id
 from app.models.regulation_update import RegulationUpdate
 from app.api.v1.schemas.regulation import RegulationResponse
 from app.ai.graph_builder import trigger_agent_pipeline
+from app.core.audit import add_audit_event
 
 logger = logging.getLogger("sentinel-os.api.regulations")
 
@@ -115,12 +116,14 @@ def ingest_regulation(
         raw_content=payload.raw_content,
         parsed_sections=parsed,
         hash_value=hash_val,
-        status="pending_analysis"
+        status="Not Analyzed"
     )
 
     db.add(reg)
     db.commit()
     db.refresh(reg)
+
+    add_audit_event(db, reg.id, "regulation_imported", f"FDA regulation '{reg.title}' manually ingested.")
 
     # Trigger the AI LangGraph pipeline synchronously
     try:
@@ -131,7 +134,7 @@ def ingest_regulation(
         )
         
         # Save results in the DB
-        reg.status = "classified"
+        reg.status = "Not Analyzed"
         reg.parsed_sections = {
             "sections": parsed,
             "classification": {
@@ -151,4 +154,32 @@ def ingest_regulation(
         # We don't roll back the ingestion, but log the failure so API doesn't crash on connection issues
 
     return helper_map_regulation_response(reg)
+
+
+@router.patch("/{regulation_id}/status", response_model=RegulationResponse)
+def update_regulation_status(
+    regulation_id: uuid.UUID,
+    status_payload: dict,
+    db: Session = Depends(get_db)
+) -> Any:
+    regulation = db.query(RegulationUpdate).filter(RegulationUpdate.id == regulation_id).first()
+    if not regulation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Regulation update not found"
+        )
+    new_status = status_payload.get("status")
+    if new_status:
+        regulation.status = new_status
+        
+        # Log case closing or status changes in audit log
+        if new_status == "Closed":
+            add_audit_event(db, regulation_id, "case_closed", "Compliance Case was closed successfully.")
+        else:
+            add_audit_event(db, regulation_id, "status_updated", f"Compliance Case status updated to '{new_status}'.")
+            
+        db.add(regulation)
+        db.commit()
+        db.refresh(regulation)
+    return helper_map_regulation_response(regulation)
 

@@ -14,6 +14,7 @@ const collectionRoots = [
   "tasks",
   "impact",
   "users",
+  "ai-status",
 ];
 
 /** @type {import('next').NextConfig} */

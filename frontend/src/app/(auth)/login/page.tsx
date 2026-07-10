@@ -25,7 +25,7 @@ export default function LoginPage() {
     try {
       const result = await login(email, password);
       setSession(result.access_token, result.user);
-      router.push("/dashboard");
+      router.push("/regulations");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed. Please try again.");
       setSubmitting(false);
