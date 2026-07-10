@@ -1,5 +1,5 @@
 #!/bin/bash
-# Sentinel OS - Health Check Script
+# AREX - Health Check Script
 
 set -eo pipefail
 
@@ -14,7 +14,7 @@ elif [ "$TARGET_SERVICE" = "qdrant" ]; then
   curl -f http://localhost:6333/readyz || exit 1
 elif [ "$TARGET_SERVICE" = "postgres" ]; then
   # Check Postgres database server status
-  pg_isready -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-sentinel_db}" || exit 1
+  pg_isready -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-arex_db}" || exit 1
 else
   echo "Unknown service identifier: $TARGET_SERVICE"
   exit 1

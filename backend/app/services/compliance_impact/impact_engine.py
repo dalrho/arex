@@ -8,7 +8,7 @@ from app.services.embeddings.embedding_service import embedding_service
 from app.services.vector_db.qdrant_client import vector_db_client
 from app.services.risk_scoring.risk_rules import calculate_risk_score
 
-logger = logging.getLogger("sentinel-os.compliance-impact-engine")
+logger = logging.getLogger("arex.compliance-impact-engine")
 
 def assess_compliance_impact(
     regulation_id: uuid.UUID,

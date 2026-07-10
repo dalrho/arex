@@ -1,18 +1,18 @@
-# Sentinel OS - System Architecture & Monorepo Philosophy
+# AREX - System Architecture & Monorepo Philosophy
 
-This document outlines the high-level architecture of Sentinel OS, focusing on the monorepo organization, core structural boundaries, and safety-critical compliance design.
+This document outlines the high-level architecture of AREX, focusing on the monorepo organization, core structural boundaries, and safety-critical compliance design.
 
 ## Monorepo Philosophy & Organization
 
-Sentinel OS is structured as a unified monorepo to solve a critical regulatory challenge: **preventing API drift and ensuring perfect compliance traceability**. By housing all application components under a single repository, we gain several key benefits:
+AREX is structured as a unified monorepo to solve a critical regulatory challenge: **preventing API drift and ensuring perfect compliance traceability**. By housing all application components under a single repository, we gain several key benefits:
 
-1. **Single Source of Truth**: The `shared/openapi/` folder holds the API contract (`sentinel-os.yaml`). Both the Python backend and TypeScript frontend are built, verified, and typed against this file.
+1. **Single Source of Truth**: The `shared/openapi/` folder holds the API contract (`arex.yaml`). Both the Python backend and TypeScript frontend are built, verified, and typed against this file.
 2. **Cohesive Infrastructure**: Dockers and database configuration live in `infra/` so that a single `docker-compose.yml` orchestrates the entire platform locally and in staging environments.
 3. **Day-One Regulatory Tracing**: `docs/compliance/21-cfr-part-11-mapping.md` provides audit-ready trace logs mapping code capabilities directly to federal regulations.
 
 ## Core Architectural Boundaries
 
-Sentinel OS utilizes a decoupled architecture to maintain high availability, security, and strict data validation:
+AREX utilizes a decoupled architecture to maintain high availability, security, and strict data validation:
 
 ```
                   ┌──────────────────────┐

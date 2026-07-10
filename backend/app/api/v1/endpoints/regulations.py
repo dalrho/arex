@@ -12,7 +12,7 @@ from app.api.v1.schemas.regulation import RegulationResponse
 from app.ai.graph_builder import trigger_agent_pipeline
 from app.core.audit import add_audit_event
 
-logger = logging.getLogger("sentinel-os.api.regulations")
+logger = logging.getLogger("arex.api.regulations")
 
 router = APIRouter()
 

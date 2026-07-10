@@ -7,7 +7,7 @@
 This ticket represents the implementation work for the user story in **EPIC 1 â€” Organization Setup & Document Ingestion**. The objective is to design, develop, and integrate the related backend APIs, service layers, and frontend components to ensure a fully functioning, security-compliant, and regulatory-traceable implementation.
 
 ## Acceptance Criteria
-- [ ] API contract `POST /v1/documents`, `GET /v1/documents`, `GET /v1/documents/{id}` defined in `shared/openapi/sentinel-os.yaml`.
+- [ ] API contract `POST /v1/documents`, `GET /v1/documents`, `GET /v1/documents/{id}` defined in `shared/openapi/arex.yaml`.
 - [ ] Ingestion pipeline parses documents (text extraction with PyMuPDF/pdfplumber).
 - [ ] Chunking strategy & `embedding_service` integration (BGE-M3/BGE-large) implemented.
 - [ ] Metadata (doc type, department, version) upserted to Qdrant client.
@@ -18,7 +18,7 @@ This ticket represents the implementation work for the user story in **EPIC 1 â€
 - [ ] Raw PDF/document storage configured (using a shared Docker volume under `/app/storage` or database storage) to support UI redlining and exporting.
 
 ## Technical Tasks
-- [ ] Define API contract in `shared/openapi/sentinel-os.yaml` for documents endpoints
+- [ ] Define API contract in `shared/openapi/arex.yaml` for documents endpoints
 - [ ] Implement `backend/app/services/regulation_parser/pdf_parser.py`
 - [ ] Implement chunking strategy & embedding service in `backend/app/services/embeddings/embedding_service.py`
 - [ ] Implement `backend/app/services/vector_db/qdrant_client.py` for document indexing
@@ -63,7 +63,7 @@ This ticket represents the implementation work for the user story in **EPIC 1 â€
 2.  **Scanned PDFs:** Simple text extraction fails on scanned PDFs. Check if extracted text length is less than 50 characters, and log a warning or return a notification to the user suggesting OCR ingestion.
 3.  **FastAPI Upload Limit:** Limit uploads to 10MB using middleware or route checks to prevent server denial-of-service.
 \n## Affected Files
-- [shared/openapi/sentinel-os.yaml](shared/openapi/sentinel-os.yaml)
+- [shared/openapi/arex.yaml](shared/openapi/arex.yaml)
 - [backend/app/services/regulation_parser/pdf_parser.py](backend/app/services/regulation_parser/pdf_parser.py)
 - [backend/app/services/embeddings/embedding_service.py](backend/app/services/embeddings/embedding_service.py)
 - [backend/app/services/vector_db/qdrant_client.py](backend/app/services/vector_db/qdrant_client.py)

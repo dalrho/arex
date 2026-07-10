@@ -1,6 +1,6 @@
 import logging
 
-logger = logging.getLogger("sentinel-os.workflow-state-machine")
+logger = logging.getLogger("arex.workflow-state-machine")
 
 class WorkflowStateMachine:
     STATUS_PENDING = "PENDING_REVIEW"

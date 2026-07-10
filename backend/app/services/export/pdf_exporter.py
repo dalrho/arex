@@ -81,7 +81,7 @@ def generate_pdf_report(draft: RemediationDraft, doc: Document, reg: RegulationU
     story = []
     
     # Title
-    story.append(Paragraph("SENTINEL OS - REGULATORY COMPLIANCE EXPORT", title_style))
+    story.append(Paragraph("AREX - REGULATORY COMPLIANCE EXPORT", title_style))
     story.append(Spacer(1, 10))
     
     # Status formatting

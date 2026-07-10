@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     )
 
     # General configuration
-    PROJECT_NAME: str = "Sentinel OS"
+    PROJECT_NAME: str = "AREX"
     API_V1_STR: str = "/api/v1"
 
     # -----------------------------------------------------------------------
@@ -38,8 +38,8 @@ class Settings(BaseSettings):
     # PostgreSQL Database Settings
     POSTGRES_USER: str = "postgres"
     POSTGRES_PASSWORD: str = "dev_password"
-    POSTGRES_DB: str = "sentinel_db"
-    DATABASE_URL: str = "postgresql://postgres:dev_password@localhost:5432/sentinel_db"
+    POSTGRES_DB: str = "arex_db"
+    DATABASE_URL: str = "postgresql://postgres:dev_password@localhost:5432/arex_db"
 
     # Qdrant Vector DB Settings
     QDRANT_URL: str = "http://localhost:6333"

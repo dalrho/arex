@@ -1,7 +1,7 @@
 import fitz  # PyMuPDF
 import logging
 
-logger = logging.getLogger("sentinel-os.pdf-parser")
+logger = logging.getLogger("arex.pdf-parser")
 
 def extract_text_from_pdf(file_path: str) -> str:
     """

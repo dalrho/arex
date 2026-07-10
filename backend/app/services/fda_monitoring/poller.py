@@ -17,7 +17,7 @@ from app.services.fda_monitoring.source_config import (
     BACKOFF_FACTOR
 )
 
-logger = logging.getLogger("sentinel-os.fda-poller")
+logger = logging.getLogger("arex.fda-poller")
 
 class HTMLStripper(HTMLParser):
     def __init__(self):

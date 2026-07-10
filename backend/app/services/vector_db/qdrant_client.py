@@ -4,7 +4,7 @@ from qdrant_client import QdrantClient as RealQdrantClient
 from qdrant_client.http import models as qdrant_models
 from app.core.config import settings
 
-logger = logging.getLogger("sentinel-os.vector-db")
+logger = logging.getLogger("arex.vector-db")
 
 class VectorDBClient:
     def __init__(self):
@@ -12,7 +12,7 @@ class VectorDBClient:
         # Fallback to localhost if connecting from host context in scripts.
         self.url = settings.QDRANT_URL
         self.client = RealQdrantClient(url=self.url)
-        self.collection_name = "sentinel_docs"
+        self.collection_name = "arex_docs"
 
     def init_collection(self) -> None:
         """

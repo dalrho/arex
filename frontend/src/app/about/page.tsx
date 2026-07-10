@@ -4,10 +4,9 @@ import Image from "next/image";
 import Link from "next/link";
 import { FadeIn } from "@/components/ui/FadeIn";
 
-const BRAND_LOGO_SRC = "/brand/sentinel-os-logo.svg";
+const BRAND_LOGO_SRC = "/brand/arex-logo.png";
 
 export const metadata: Metadata = {
-  title: "About Sentinel OS",
   description:
     "AI-powered regulatory intelligence, document remediation, and compliance workflow tracking for FDA 21 CFR Part 11.",
 };
@@ -103,7 +102,7 @@ const WORKFLOW_STEPS = [
 
 /**
  * About Page ("/about")
- * Public product overview explaining Sentinel OS capabilities, architecture, and compliance design.
+ * Public product overview explaining AREX capabilities, architecture, and compliance design.
  */
 export default function AboutPage() {
   return (
@@ -133,22 +132,19 @@ export default function AboutPage() {
           <div className="opacity-0 motion-safe:animate-scale-in">
             <Image
               src={BRAND_LOGO_SRC}
-              alt="Sentinel OS"
-              width={80}
-              height={80}
+              alt="AREX"
+              width={200}
+              height={59}
               priority
-              className="mx-auto h-20 w-20 rounded-2xl shadow-2xl shadow-blue-950/40 motion-safe:animate-subtle-float motion-safe:[animation-delay:700ms]"
+              className="mx-auto h-auto w-40 object-contain shadow-2xl shadow-blue-950/40 motion-safe:animate-subtle-float motion-safe:[animation-delay:700ms] md:w-48"
             />
           </div>
           <div className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-800/50 px-3 py-1 text-xs font-semibold tracking-wide text-brand-100 opacity-0 motion-safe:animate-fade-in-up motion-safe:[animation-delay:100ms]">
             <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
             FDA 21 CFR Part 11 Regulatory Intelligence
           </div>
-          <h1 className="text-4xl font-extrabold tracking-tight md:text-5xl opacity-0 motion-safe:animate-fade-in-up motion-safe:[animation-delay:200ms]">
-            About Sentinel OS
-          </h1>
           <p className="mx-auto max-w-2xl text-lg text-slate-300 opacity-0 motion-safe:animate-fade-in-up motion-safe:[animation-delay:300ms]">
-            Sentinel OS is a regulatory intelligence platform that automates compliance
+            AREX is a regulatory intelligence platform that automates compliance
             mapping for FDA 21 CFR Part 11—enforcing safety-critical compliance through
             decoupled agentic LLM remediation and deterministic database audit logs.
           </p>
@@ -168,19 +164,19 @@ export default function AboutPage() {
             <p className="mt-4">
               Under FDA 21 CFR Part 11, AI cannot autonomously write, edit, or sign off on
               standard operating procedures. Every change requires explicit human review
-              with a complete, immutable audit trail. Sentinel OS is built around this
+              with a complete, immutable audit trail. AREX is built around this
               constraint—not in spite of it.
             </p>
           </div>
           </section>
         </FadeIn>
 
-        {/* What Sentinel OS Does */}
+        {/* What AREX Does */}
         <FadeIn>
           <section className="space-y-4">
-            <h2 className="text-2xl font-bold">What Sentinel OS Does</h2>
+            <h2 className="text-2xl font-bold">What AREX Does</h2>
             <p className="text-slate-300">
-              Sentinel OS provides end-to-end regulatory intelligence—from detecting FDA
+              AREX provides end-to-end regulatory intelligence—from detecting FDA
               updates to exporting approved document revisions. The platform combines
               deterministic backend services with AI agents orchestrated through LangGraph,
               always keeping humans in control of final decisions.
@@ -296,7 +292,7 @@ export default function AboutPage() {
             <h2 className="text-2xl font-bold">Architecture Overview</h2>
             <div className="rounded-xl border border-slate-700 bg-slate-800/30 p-6 text-slate-300 transition-colors duration-300 hover:border-slate-600 hover:bg-slate-800/40">
             <p className="mb-4">
-              Sentinel OS uses a decoupled architecture to maintain high availability,
+              AREX uses a decoupled architecture to maintain high availability,
               security, and strict data validation:
             </p>
             <ul className="space-y-3 text-sm">
