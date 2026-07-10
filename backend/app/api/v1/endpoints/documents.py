@@ -168,6 +168,7 @@ def list_documents(
 @router.get("/{document_id}/download")
 def download_document(
     document_id: uuid.UUID,
+    inline: bool = False,
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_tenant_id)
 ) -> Any:
@@ -201,20 +202,23 @@ def download_document(
         else:
             mime_type = "application/octet-stream"
 
+    disp_type = "inline" if inline else "attachment"
+
     if document.file_path and os.path.exists(document.file_path):
         return FileResponse(
             path=document.file_path,
             filename=document.filename,
             media_type=mime_type,
-            content_disposition_type="attachment",
+            content_disposition_type=disp_type,
         )
 
     if document.parsed_text:
         fallback_name = os.path.splitext(document.filename)[0] + ".txt"
+        header_disp = "inline" if inline else "attachment"
         return Response(
             content=document.parsed_text,
             media_type="text/plain; charset=utf-8",
-            headers={"Content-Disposition": f'attachment; filename="{fallback_name}"'},
+            headers={"Content-Disposition": f'{header_disp}; filename="{fallback_name}"'},
         )
 
     raise HTTPException(
