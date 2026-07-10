@@ -1,6 +1,6 @@
-# Contributing to Sentinel OS
+# Contributing to AREX
 
-Welcome! This guide outlines how to set up, develop, and test Sentinel OS locally.
+Welcome! This guide outlines how to set up, develop, and test AREX locally.
 
 ---
 
@@ -27,7 +27,7 @@ We use Docker Compose to manage local development databases, vector stores, and 
 
 ## 2. How to Add a New API Endpoint
 
-All Sentinel OS APIs must conform to the safety-critical multi-tenant design patterns:
+All AREX APIs must conform to the safety-critical multi-tenant design patterns:
 
 1. **API Router**: Mount routes inside `backend/app/api/v1/endpoints/`.
 2. **Scoping**: Ensure the endpoint injects the multi-tenant dependency `get_tenant_id` to filter results:
@@ -40,7 +40,7 @@ All Sentinel OS APIs must conform to the safety-critical multi-tenant design pat
        # Always query database using tenant_id filter constraint
        return service.get_documents_by_tenant(db, tenant_id)
    ```
-3. **OpenAPI**: Register the new endpoint in `shared/openapi/sentinel-os.yaml`.
+3. **OpenAPI**: Register the new endpoint in `shared/openapi/arex.yaml`.
 
 ---
 

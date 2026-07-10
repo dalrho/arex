@@ -11,7 +11,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
-logger = logging.getLogger("sentinel-os")
+logger = logging.getLogger("arex")
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -38,4 +38,4 @@ async def health_check():
     """
     Simple health check endpoint to verify backend service viability.
     """
-    return {"status": "healthy", "service": "sentinel-os-backend", "version": "1.0.0"}
+    return {"status": "healthy", "service": "arex-backend", "version": "1.0.0"}

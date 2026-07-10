@@ -2,8 +2,9 @@
 
 import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FileText, Link2, Loader2, Play, RefreshCw, ShieldCheck, X } from "lucide-react";
+import { CheckCircle2, Clock3, FileText, Link2, Loader2, Play, RefreshCw, ShieldCheck, X } from "lucide-react";
 import clsx from "clsx";
+import AssessmentLoadingView from "@/components/assessments/AssessmentLoadingView";
 import StatusBadge from "@/components/ui/StatusBadge";
 import {
   generateRemediationDrafts,
@@ -16,9 +17,11 @@ import {
   updateRegulationStatus,
   listTasks,
 } from "@/lib/apiClient";
-import { demoImpactForRegulation, demoRegulations, demoRemediations } from "@/lib/demoData";
+import { demoImpactForRegulation, demoRegulations, demoRemediationsForRegulation } from "@/lib/demoData";
 import { formatDate, getAccountDisplayName } from "@/lib/format";
 import type { AuthUser, ImpactResponse, RegulationResponse, TaskResponse } from "@/types/api";
+
+const MIN_ASSESSMENT_ANIMATION_MS = 6500;
 
 function hostFor(url: string): string {
   try {
@@ -28,9 +31,41 @@ function hostFor(url: string): string {
   }
 }
 
-function statusFor(regulation: RegulationResponse, activeImpact: ImpactResponse | null): string {
-  if (activeImpact?.regulation_id === regulation.id) return "Analysis Complete";
+function waitForAssessmentAnimation(): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, MIN_ASSESSMENT_ANIMATION_MS);
+  });
+}
+
+function normalizedStatus(status?: string | null): string {
+  return (status ?? "").toLowerCase().replace(/[\s-]+/g, "_");
+}
+
+function hasCompletedAssessment(
+  regulation: RegulationResponse | null,
+  activeImpact: ImpactResponse | null
+): boolean {
+  if (!regulation) return false;
+  if (activeImpact?.regulation_id === regulation.id) return true;
+
+  return [
+    "analysis_complete",
+    "impact_assessment_complete",
+    "draft_approved",
+    "implementation_planning",
+    "implementation_complete",
+    "closed",
+  ].includes(normalizedStatus(regulation.status));
+}
+
+function displayStatusLabel(regulation: RegulationResponse, activeImpact: ImpactResponse | null): string {
+  if (hasCompletedAssessment(regulation, activeImpact)) return "Analysis Complete";
   return regulation.status?.replace(/_/g, " ") || "Pending Analysis";
+}
+
+function markRegulationAssessed(regulation: RegulationResponse): RegulationResponse {
+  if (normalizedStatus(regulation.status) === "closed") return regulation;
+  return { ...regulation, status: "ANALYSIS_COMPLETE" };
 }
 
 function RegulationsPage() {
@@ -47,7 +82,8 @@ function RegulationsPage() {
   }, [searchParams]);
 
   const [regulations, setRegulations] = useState<RegulationResponse[]>(demoRegulations);
-  const [selectedId, setSelectedId] = useState<string | null>(demoRegulations[0]?.id ?? null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [openedId, setOpenedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [assessing, setAssessing] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -59,7 +95,9 @@ function RegulationsPage() {
   const [tasks, setTasks] = useState<TaskResponse[]>([]);
   const [showImpactDetails, setShowImpactDetails] = useState(true);
   const [citationOpen, setCitationOpen] = useState(false);
-  const [user, setUser] = useState<AuthUser | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(() => getCurrentUser());
+  const [selectedCaseImpact, setSelectedCaseImpact] = useState<ImpactResponse | null>(null);
+  const [selectedCaseImpactLoading, setSelectedCaseImpactLoading] = useState(false);
 
   useEffect(() => {
     setUser(getCurrentUser());
@@ -72,10 +110,12 @@ function RegulationsPage() {
       const nextRows = rows.length > 0 ? rows : demoRegulations;
       nextRows.sort((a, b) => new Date(b.published_date).getTime() - new Date(a.published_date).getTime());
       setRegulations(nextRows);
-      setSelectedId((current) => current ?? nextRows[0]?.id ?? null);
+      setSelectedId((current) => (current && nextRows.some((row) => row.id === current) ? current : null));
+      setOpenedId((current) => (current && nextRows.some((row) => row.id === current) ? current : null));
     } catch {
       setRegulations(demoRegulations);
-      setSelectedId((current) => current ?? demoRegulations[0]?.id ?? null);
+      setSelectedId((current) => (current && demoRegulations.some((row) => row.id === current) ? current : null));
+      setOpenedId((current) => (current && demoRegulations.some((row) => row.id === current) ? current : null));
     } finally {
       setLoading(false);
     }
@@ -85,21 +125,35 @@ function RegulationsPage() {
     void load();
   }, [load]);
 
-  const selected = useMemo(
-    () => regulations.find((regulation) => regulation.id === selectedId) ?? regulations[0] ?? null,
+  const selectedRailRegulation = useMemo(
+    () => regulations.find((regulation) => regulation.id === selectedId) ?? null,
     [regulations, selectedId]
   );
 
-  // Automatically fetch existing impact assessment, remediation drafts, and tasks on selection
+  const selected = useMemo(
+    () => regulations.find((regulation) => regulation.id === openedId) ?? null,
+    [regulations, openedId]
+  );
+
+  // Fetch existing case artifacts only when a case is explicitly opened.
   useEffect(() => {
-    if (!selectedId) return;
+    if (!openedId) {
+      setImpact(null);
+      setRemediationDrafts([]);
+      setSelectedDocIds([]);
+      setTasks([]);
+      setShowImpactDetails(true);
+      setCitationOpen(false);
+      return;
+    }
+
     setImpact(null);
     setRemediationDrafts([]);
     setSelectedDocIds([]);
     setTasks([]);
     setShowImpactDetails(true);
     
-    getImpactForRegulation(selectedId)
+    getImpactForRegulation(openedId)
       .then((res) => {
         setImpact(res);
         if (res.affected_documents) {
@@ -112,26 +166,61 @@ function RegulationsPage() {
 
     listRemediations()
       .then((drafts) => {
-        const filtered = drafts.filter((d) => d.regulation_id === selectedId);
+        const filtered = drafts.filter((d) => d.regulation_id === openedId);
         setRemediationDrafts(filtered);
       })
       .catch(() => {});
 
     listTasks()
       .then((allTasks) => {
-        const filtered = allTasks.filter((t) => t.regulation_id === selectedId && t.status !== "REJECTED");
+        const filtered = allTasks.filter((t) => t.regulation_id === openedId && t.status !== "REJECTED");
         setTasks(filtered);
       })
       .catch(() => {});
-  }, [selectedId]);
+  }, [openedId]);
+
+  useEffect(() => {
+    if (!selectedRailRegulation) {
+      setSelectedCaseImpact(null);
+      setSelectedCaseImpactLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setSelectedCaseImpact(null);
+    setSelectedCaseImpactLoading(true);
+
+    getImpactForRegulation(selectedRailRegulation.id)
+      .then((res) => {
+        if (!cancelled) setSelectedCaseImpact(res);
+      })
+      .catch(() => {
+        if (!cancelled && hasCompletedAssessment(selectedRailRegulation, null)) {
+          setSelectedCaseImpact(demoImpactForRegulation(selectedRailRegulation.id));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setSelectedCaseImpactLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedRailRegulation]);
 
   async function handleRunAssessment(regulation = selected) {
     if (!regulation) return;
     setSelectedId(regulation.id);
+    setOpenedId(regulation.id);
     setAssessing(true);
+    const minimumAnimation = waitForAssessmentAnimation();
     try {
       const res = await runImpactAssessment(regulation.id);
       setImpact(res);
+      setSelectedCaseImpact(res);
+      setRegulations((prev) =>
+        prev.map((item) => (item.id === regulation.id ? markRegulationAssessed(item) : item))
+      );
       if (res.affected_documents) {
         setSelectedDocIds(res.affected_documents.map((d: any) => d.document_id));
       } else {
@@ -140,26 +229,53 @@ function RegulationsPage() {
     } catch {
       const demoRes = demoImpactForRegulation(regulation.id);
       setImpact(demoRes);
+      setSelectedCaseImpact(demoRes);
+      setRegulations((prev) =>
+        prev.map((item) => (item.id === regulation.id ? markRegulationAssessed(item) : item))
+      );
       if (demoRes.affected_documents) {
         setSelectedDocIds(demoRes.affected_documents.map((d: any) => d.document_id));
       } else {
         setSelectedDocIds([]);
       }
     } finally {
+      await minimumAnimation;
       setAssessing(false);
     }
   }
 
-  async function handleGenerateDrafts() {
-    if (!selected) return;
+  async function handleGenerateDrafts(regulation = selected) {
+    if (!regulation) return;
+    const availableImpact =
+      impact?.regulation_id === regulation.id
+        ? impact
+        : selectedCaseImpact?.regulation_id === regulation.id
+          ? selectedCaseImpact
+          : null;
+
+    if (!hasCompletedAssessment(regulation, availableImpact)) return;
+
+    setSelectedId(regulation.id);
+    setOpenedId(regulation.id);
     setGenerating(true);
+    const documentIds =
+      impact?.regulation_id === regulation.id && selectedDocIds.length > 0
+        ? selectedDocIds
+        : availableImpact?.affected_documents?.map((document) => document.document_id) ?? [];
+
     try {
-      const created = await generateRemediationDrafts(selected.id, selectedDocIds);
-      const nextDrafts = created.length > 0 ? created : demoRemediations;
+      const created = await generateRemediationDrafts(
+        regulation.id,
+        documentIds.length > 0 ? documentIds : undefined
+      );
+      const scopedDrafts = created.filter((draft) => draft.regulation_id === regulation.id);
+      const nextDrafts = scopedDrafts.length > 0 ? scopedDrafts : demoRemediationsForRegulation(regulation.id);
       setRemediationDrafts(nextDrafts);
       router.push(`/remediation/${nextDrafts[0].id}`);
     } catch {
-      router.push(`/remediation/${demoRemediations[0].id}`);
+      const nextDrafts = demoRemediationsForRegulation(regulation.id);
+      setRemediationDrafts(nextDrafts);
+      router.push(`/remediation/${nextDrafts[0].id}`);
     } finally {
       setGenerating(false);
     }
@@ -221,12 +337,48 @@ function RegulationsPage() {
     }
   }
 
+  function handleRailSelect(id: string) {
+    if (selectedId === id) {
+      setSelectedId(null);
+      if (openedId === id) setOpenedId(null);
+      return;
+    }
+
+    setSelectedId(id);
+    setOpenedId(null);
+  }
+
+  function handleRailOpen(id: string) {
+    setSelectedId(id);
+    setOpenedId(id);
+  }
 
   const handleToggleDoc = (docId: string) => {
     setSelectedDocIds((prev) =>
       prev.includes(docId) ? prev.filter((id) => id !== docId) : [...prev, docId]
     );
   };
+
+  const selectedRailImpact =
+    impact?.regulation_id === selectedRailRegulation?.id
+      ? impact
+      : selectedCaseImpact?.regulation_id === selectedRailRegulation?.id
+        ? selectedCaseImpact
+        : null;
+  const canGenerateSelectedDrafts = hasCompletedAssessment(selectedRailRegulation, selectedRailImpact);
+  const selectedIsClosed = normalizedStatus(selected?.status) === "closed";
+  const selectedStatusComplete = selected ? hasCompletedAssessment(selected, impact) : false;
+  const selectedStatusLabel = selected
+    ? selectedIsClosed
+      ? "Closed Case"
+      : displayStatusLabel(selected, impact)
+    : "Not Analyzed";
+  const selectedStatusTone = selectedIsClosed || selectedStatusComplete ? "emerald" : "amber";
+  const selectedStatusDescription = selectedIsClosed
+    ? "Case has been closed after implementation review."
+    : selectedStatusComplete
+      ? "Impact assessment is complete and ready for the next workflow step."
+      : "Run the assessment to determine affected controls.";
 
   return (
     <div className="flex h-full min-w-0 bg-[#020613]">
@@ -243,54 +395,77 @@ function RegulationsPage() {
             </button>
           </div>
         )}
-        {!selected ? (
-          <section className="flex min-h-screen items-center justify-center px-6 py-12 lg:min-h-full">
-            <div className="w-full max-w-3xl text-center">
-              <h1 className="text-2xl font-extrabold uppercase tracking-normal text-white md:text-3xl">
-                No Compliance Case Opened
-              </h1>
-              <p className="mt-3 text-sm font-semibold uppercase tracking-normal text-slate-400">
-                Please select or import a regulation from the rail.
-              </p>
-            </div>
-          </section>
+        {assessing ? (
+          <AssessmentLoadingView />
+        ) : !selected ? (
+          <RegulationsHome
+            welcomeName={getAccountDisplayName(user)}
+            selectedRegulation={selectedRailRegulation}
+            canGenerateDrafts={canGenerateSelectedDrafts}
+            checkingAssessment={selectedCaseImpactLoading}
+            assessing={assessing}
+            generating={generating}
+            onRunAssessment={() => void handleRunAssessment(selectedRailRegulation)}
+            onGenerateDrafts={() => void handleGenerateDrafts(selectedRailRegulation)}
+          />
         ) : (
           <section className="px-6 py-8 md:px-10">
             <div className="mx-auto max-w-5xl space-y-8 pb-32">
               
               {/* Compliance Case Dashboard Header */}
               <div className="rounded-2xl border border-slate-750 bg-[#081024]/90 p-6 shadow-2xl space-y-6 backdrop-blur-sm">
-                <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-800 pb-4">
-                  <div>
+                <div className="grid gap-5 border-b border-slate-800 pb-5 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start">
+                  <div className="min-w-0">
                     <span className="text-[10px] font-extrabold uppercase text-blue-400 tracking-wider">Compliance Case</span>
                     <h2 className="text-2xl font-extrabold text-white mt-1 leading-tight">{selected.title}</h2>
                     <p className="text-xs text-slate-400 mt-2">
                       Source: {hostFor(selected.source_url)} | Published {formatDate(selected.published_date)}
                     </p>
                   </div>
-                  <div className="text-left md:text-right flex flex-col items-start md:items-end gap-2">
-                    <div>
-                      <span className="text-xs font-bold text-slate-500 uppercase block">Status</span>
-                      <div className="mt-1">
-                        <StatusBadge label={selected.status || "Not Analyzed"} tone={selected.status === "Closed" ? "emerald" : "blue"} />
+                  <div className="border-t border-slate-800 pt-4 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0">
+                    <div className="flex items-start gap-3">
+                      <span
+                        className={clsx(
+                          "mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border",
+                          selectedIsClosed || selectedStatusComplete
+                            ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                            : "border-amber-500/30 bg-amber-500/10 text-amber-300"
+                        )}
+                      >
+                        {selectedIsClosed || selectedStatusComplete ? (
+                          <CheckCircle2 className="h-5 w-5" />
+                        ) : (
+                          <Clock3 className="h-5 w-5" />
+                        )}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-slate-500">
+                          Status
+                        </p>
+                        <StatusBadge
+                          label={selectedStatusLabel}
+                          tone={selectedStatusTone}
+                          className="mt-2 px-2.5 py-1 text-xs"
+                        />
+                        <p className="mt-2 text-xs leading-5 text-slate-400">{selectedStatusDescription}</p>
                       </div>
                     </div>
-                    {selected.status === "Closed" ? (
+                    {selectedIsClosed ? (
                       <button
                         type="button"
                         onClick={() => void handleReopenCase()}
                         disabled={closingCase}
-                        className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-900 px-3 text-[11px] font-bold text-blue-450 hover:bg-slate-800 hover:text-blue-300 disabled:opacity-50"
+                        className="mt-4 inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 text-[11px] font-bold text-blue-200 hover:bg-blue-500/20 disabled:opacity-50"
                       >
                         {closingCase ? <Loader2 className="h-3 w-3 animate-spin" /> : "Reopen Case"}
                       </button>
                     ) : (
-                      selected.status !== "Not Analyzed" && selected.status !== "pending_analysis" && (
+                      !["not_analyzed", "pending_analysis"].includes(normalizedStatus(selected.status)) && (
                         <button
                           type="button"
                           onClick={() => void handleCloseCase()}
                           disabled={closingCase}
-                          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-750 bg-slate-900 px-3 text-[11px] font-bold text-rose-450 hover:bg-slate-800 hover:text-rose-350 disabled:opacity-50"
+                          className="mt-4 inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 text-[11px] font-bold text-rose-200 hover:bg-rose-500/20 disabled:opacity-50"
                         >
                           {closingCase ? <Loader2 className="h-3 w-3 animate-spin" /> : "Close Case"}
                         </button>
@@ -433,7 +608,7 @@ function RegulationsPage() {
                           <button
                             type="button"
                             onClick={() => void handleGenerateDrafts()}
-                            disabled={generating || selectedDocIds.length === 0 || selected.status === "Closed"}
+                            disabled={generating || !impact || selected.status === "Closed"}
                             className="px-3.5 py-1.5 rounded bg-slate-800 border border-slate-700 text-slate-300 text-xs font-bold hover:bg-slate-750 transition duration-200 flex items-center gap-1 disabled:opacity-50"
                           >
                             {generating && <Loader2 className="h-3 w-3 animate-spin" />}
@@ -444,7 +619,7 @@ function RegulationsPage() {
                         <button
                           type="button"
                           onClick={() => void handleGenerateDrafts()}
-                          disabled={generating || !impact || selectedDocIds.length === 0 || selected.status === "Closed"}
+                          disabled={generating || !impact || selected.status === "Closed"}
                           className="w-full py-2 rounded bg-blue-600 text-white text-xs font-bold hover:bg-blue-500 transition duration-200 disabled:opacity-50 flex items-center justify-center gap-2"
                         >
                           {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
@@ -533,12 +708,14 @@ function RegulationsPage() {
 
       <RegulationRail
         regulations={regulations}
-        selectedId={selected?.id ?? null}
+        selectedId={selectedId}
         loading={loading}
         impact={impact}
+        selectedImpact={selectedCaseImpact}
         assessing={assessing}
         onFetch={() => void load()}
-        onSelect={(id) => setSelectedId(id)}
+        onSelect={handleRailSelect}
+        onOpen={handleRailOpen}
         onRun={(regulation) => void handleRunAssessment(regulation)}
       />
 
@@ -547,23 +724,98 @@ function RegulationsPage() {
   );
 }
 
+function RegulationsHome({
+  welcomeName,
+  selectedRegulation,
+  canGenerateDrafts,
+  checkingAssessment,
+  assessing,
+  generating,
+  onRunAssessment,
+  onGenerateDrafts,
+}: {
+  welcomeName: string;
+  selectedRegulation: RegulationResponse | null;
+  canGenerateDrafts: boolean;
+  checkingAssessment: boolean;
+  assessing: boolean;
+  generating: boolean;
+  onRunAssessment: () => void;
+  onGenerateDrafts: () => void;
+}) {
+  const assessmentDisabled = !selectedRegulation || assessing;
+  const draftsDisabled = !selectedRegulation || checkingAssessment || !canGenerateDrafts || generating;
+
+  return (
+    <section className="flex min-h-full items-center justify-center px-6 py-12">
+      <div className="w-full max-w-3xl text-center">
+        <h1 className="break-words text-3xl font-extrabold uppercase tracking-normal text-white md:text-4xl">
+          WELCOME, {welcomeName}!
+        </h1>
+        <p className="mt-3 text-sm font-semibold uppercase tracking-normal text-slate-300">
+          SELECT REGULATION THEN, RUN IMPACT ASSESSMENT
+        </p>
+
+        <div className="mt-8 flex flex-col items-stretch justify-center gap-4 sm:flex-row">
+          <button
+            type="button"
+            data-testid="home-run-assessment"
+            onClick={onRunAssessment}
+            disabled={assessmentDisabled}
+            title={!selectedRegulation ? "Select a regulation from the right rail first." : undefined}
+            className="inline-flex h-12 w-full items-center justify-center gap-3 rounded-lg bg-blue-600 px-6 text-sm font-extrabold text-white shadow-[0_16px_40px_rgba(37,99,235,0.18)] transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50 sm:w-72"
+          >
+            {assessing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5 fill-white" />}
+            Run Impact Assessment
+          </button>
+          <button
+            type="button"
+            data-testid="home-generate-drafts"
+            onClick={onGenerateDrafts}
+            disabled={draftsDisabled}
+            title={
+              !selectedRegulation
+                ? "Select a regulation from the right rail first."
+                : !canGenerateDrafts
+                  ? "Run impact assessment before generating remediation drafts."
+                  : undefined
+            }
+            className="inline-flex h-12 w-full items-center justify-center gap-3 rounded-lg border border-slate-300 bg-white px-6 text-sm font-extrabold text-slate-950 shadow-[0_16px_40px_rgba(255,255,255,0.08)] transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 sm:w-72"
+          >
+            {checkingAssessment || generating ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <FileText className="h-5 w-5" />
+            )}
+            Generate Remediation Drafts
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function RegulationRail({
   regulations,
   selectedId,
   loading,
   impact,
+  selectedImpact,
   assessing,
   onFetch,
   onSelect,
+  onOpen,
   onRun,
 }: {
   regulations: RegulationResponse[];
   selectedId: string | null;
   loading: boolean;
   impact: ImpactResponse | null;
+  selectedImpact: ImpactResponse | null;
   assessing: boolean;
   onFetch: () => void;
   onSelect: (id: string) => void;
+  onOpen: (id: string) => void;
   onRun: (regulation: RegulationResponse) => void;
 }) {
   return (
@@ -582,11 +834,16 @@ function RegulationRail({
       <div className="space-y-5">
         {regulations.map((regulation) => {
           const active = regulation.id === selectedId;
-          const analyzed = impact?.regulation_id === regulation.id || regulation.status === "ANALYSIS_COMPLETE";
-          const isUnopened = regulation.status === "Not Analyzed" || regulation.status === "pending_analysis";
-          const isClosed = regulation.status === "Closed";
-          const badgeLabel = isClosed ? "Closed Case" : (isUnopened ? "Unopened" : "Active Case");
-          const badgeTone = isClosed ? "emerald" : (isUnopened ? "slate" : "blue");
+          const activeImpact =
+            impact?.regulation_id === regulation.id
+              ? impact
+              : selectedImpact?.regulation_id === regulation.id
+                ? selectedImpact
+                : null;
+          const analyzed = hasCompletedAssessment(regulation, activeImpact);
+          const isClosed = normalizedStatus(regulation.status) === "closed";
+          const badgeLabel = isClosed ? "Closed Case" : displayStatusLabel(regulation, activeImpact);
+          const badgeTone = isClosed ? "emerald" : analyzed ? "emerald" : "amber";
           return (
             <article
               key={regulation.id}
@@ -595,7 +852,14 @@ function RegulationRail({
                 active ? "border-blue-500 shadow-[0_0_0_1px_rgba(37,99,235,0.35)]" : "border-slate-700"
               )}
             >
-              <button type="button" onClick={() => onSelect(regulation.id)} className="block w-full text-left">
+              <button
+                type="button"
+                data-testid={`regulation-card-${regulation.id}`}
+                onClick={() => onSelect(regulation.id)}
+                onDoubleClick={() => onOpen(regulation.id)}
+                aria-pressed={active}
+                className="block w-full text-left"
+              >
                 <h2 className="line-clamp-3 text-sm font-extrabold uppercase leading-5 text-white">
                   {regulation.title}
                 </h2>
@@ -608,7 +872,11 @@ function RegulationRail({
                 <StatusBadge label={badgeLabel} tone={badgeTone} />
                 <button
                   type="button"
-                  onClick={() => onRun(regulation)}
+                  data-testid={`regulation-run-${regulation.id}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onRun(regulation);
+                  }}
                   disabled={assessing || isClosed}
                   className="inline-flex h-7 items-center gap-1.5 rounded-md bg-blue-600 px-3 text-[11px] font-bold text-white hover:bg-blue-500 disabled:opacity-60"
                 >

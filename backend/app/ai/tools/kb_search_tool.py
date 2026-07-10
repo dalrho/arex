@@ -5,7 +5,7 @@ from typing import List
 from app.services.embeddings.embedding_service import embedding_service
 from app.services.vector_db.qdrant_client import vector_db_client
 
-logger = logging.getLogger("sentinel-os.kb-search-tool")
+logger = logging.getLogger("arex.kb-search-tool")
 
 def search_knowledge_base(query: str, organization_id: uuid.UUID, limit: int = 5) -> List[str]:
     """

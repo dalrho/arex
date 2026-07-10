@@ -12,7 +12,7 @@ from app.models.remediation_draft import RemediationDraft
 from app.ai.llm_client import llm_client
 from app.ai.tools.citation_tool import validate_citations
 
-logger = logging.getLogger("sentinel-os.remediation-agent")
+logger = logging.getLogger("arex.remediation-agent")
 
 class RemediationAgentOutput(BaseModel):
     proposed_text: str

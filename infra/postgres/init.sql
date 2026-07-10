@@ -1,7 +1,7 @@
--- Sentinel OS - init.sql
+-- AREX - init.sql
 -- Initial database schema setup
 
--- CREATE DATABASE sentinel_db;
+-- CREATE DATABASE arex_db;
 -- Note: Database creation is handled automatically by the postgres:16-alpine container environment variables.
 
 -- Enable UUID generation capabilities

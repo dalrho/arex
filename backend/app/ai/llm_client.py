@@ -6,7 +6,7 @@ from pydantic import BaseModel, ValidationError
 
 from app.core.config import settings
 
-logger = logging.getLogger("sentinel-os.llm-client")
+logger = logging.getLogger("arex.llm-client")
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -275,13 +275,13 @@ class LLMClient:
         response_model: Optional[Type[T]],
     ) -> Any:
         """
-        Generates high-fidelity mock responses for demoing Sentinel OS offline.
+        Generates high-fidelity mock responses for demoing AREX offline.
         Parses input prompts for keywords to produce realistic context-aware mocks.
         """
         combined_text = " ".join([m.get("content", "") for m in messages]).lower()
 
         if response_model is None:
-            return "This is a mock text completion response for Sentinel OS."
+            return "This is a mock text completion response for AREX."
 
         # 1. Regulatory Intelligence Output
         if response_model.__name__ == "RegulatoryIntelligenceOutput":

@@ -46,7 +46,7 @@ export default function DocumentsPage() {
     try {
       await downloadDocument(document.id, document.filename);
     } catch {
-      const blob = new Blob([`Sentinel OS demo export for ${document.filename}\n`], { type: "text/plain" });
+      const blob = new Blob([`AREX demo export for ${document.filename}\n`], { type: "text/plain" });
       const url = window.URL.createObjectURL(blob);
       const anchor = window.document.createElement("a");
       anchor.href = url;

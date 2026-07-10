@@ -1,7 +1,7 @@
 import logging
 from typing import List, Dict, Any, Optional
 
-logger = logging.getLogger("sentinel-os.citation-tool")
+logger = logging.getLogger("arex.citation-tool")
 
 def validate_citations(
     citations: List[str],

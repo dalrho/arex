@@ -5,12 +5,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, CheckCircle2, Link2, Loader2, PenLine, Play, RefreshCw, XCircle } from "lucide-react";
 import clsx from "clsx";
+import AssessmentLoadingView from "@/components/assessments/AssessmentLoadingView";
 import Modal from "@/components/ui/Modal";
 import StatusBadge from "@/components/ui/StatusBadge";
 import {
   getDocument,
   getRegulation,
   getRemediation,
+  listRemediations,
   listRegulations,
   runImpactAssessment,
   submitApprovalDecision,
@@ -20,7 +22,8 @@ import {
   demoDocuments,
   demoImpactForRegulation,
   demoRegulations,
-  demoRemediations,
+  demoRemediationForId,
+  demoRemediationForRegulation,
   demoTasks,
 } from "@/lib/demoData";
 import { formatDateTime } from "@/lib/format";
@@ -32,6 +35,9 @@ import type {
   TaskResponse,
 } from "@/types/api";
 
+const MIN_ASSESSMENT_ANIMATION_MS = 6500;
+const RAIL_DRAFT_CACHE_KEY = "arex_remediation_rail_drafts";
+
 function hostFor(url: string): string {
   try {
     return new URL(url).hostname.replace(/^www\./, "");
@@ -40,15 +46,76 @@ function hostFor(url: string): string {
   }
 }
 
+function waitForAssessmentAnimation(): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, MIN_ASSESSMENT_ANIMATION_MS);
+  });
+}
 
-function statusFor(regulation: RegulationResponse, impact: ImpactResponse | null): string {
-  if (impact?.regulation_id === regulation.id) return "Analysis Complete";
-  return regulation.status?.replace(/_/g, " ") || "Pending Analysis";
+function normalizedStatus(status?: string | null): string {
+  return (status ?? "").toLowerCase().replace(/[\s-]+/g, "_");
+}
+
+function hasCompletedAssessment(
+  regulation: RegulationResponse,
+  impact: ImpactResponse | null,
+  remediationDraft: RemediationResponse | null
+): boolean {
+  if (impact?.regulation_id === regulation.id) return true;
+  if (remediationDraft?.regulation_id === regulation.id) return true;
+
+  return [
+    "analysis_complete",
+    "impact_assessment_complete",
+    "active_case",
+    "pending_review",
+    "draft_approved",
+    "implementation_planning",
+    "implementation_complete",
+    "closed",
+  ].includes(normalizedStatus(regulation.status));
+}
+
+function mergeRemediationDrafts(
+  current: RemediationResponse[],
+  incoming: RemediationResponse[]
+): RemediationResponse[] {
+  const draftsByRegulation = new Map(current.map((draft) => [draft.regulation_id, draft]));
+
+  incoming.forEach((draft) => {
+    draftsByRegulation.set(draft.regulation_id, draft);
+  });
+
+  return Array.from(draftsByRegulation.values());
+}
+
+function readCachedRailDrafts(): RemediationResponse[] {
+  if (typeof window === "undefined") return [];
+
+  try {
+    const raw = window.sessionStorage.getItem(RAIL_DRAFT_CACHE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as RemediationResponse[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeCachedRailDrafts(drafts: RemediationResponse[]): void {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.sessionStorage.setItem(RAIL_DRAFT_CACHE_KEY, JSON.stringify(drafts));
+  } catch {
+    // Session cache is best-effort; the in-memory rail still works without it.
+  }
 }
 
 export default function RemediationReviewPage({ params }: { params: { id: string } }) {
   const router = useRouter();
   const [draft, setDraft] = useState<RemediationResponse | null>(null);
+  const [railDrafts, setRailDrafts] = useState<RemediationResponse[]>(() => readCachedRailDrafts());
   const [document, setDocument] = useState<DocumentResponse | null>(null);
   const [regulation, setRegulation] = useState<RegulationResponse | null>(null);
   const [regulations, setRegulations] = useState<RegulationResponse[]>(demoRegulations);
@@ -74,20 +141,48 @@ export default function RemediationReviewPage({ params }: { params: { id: string
     }
   }, []);
 
+  const loadRailDrafts = useCallback(async () => {
+    try {
+      const rows = await listRemediations();
+      setRailDrafts((current) => {
+        const next = mergeRemediationDrafts(current, rows);
+        writeCachedRailDrafts(next);
+        return next;
+      });
+    } catch {
+      setRailDrafts((current) => current);
+    }
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
 
     async function load() {
       setLoading(true);
-      let nextDraft: RemediationResponse;
+      let nextDraft: RemediationResponse | null;
       try {
         nextDraft = await getRemediation(params.id);
       } catch {
-        nextDraft = demoRemediations.find((item) => item.id === params.id) ?? demoRemediations[0];
+        nextDraft = demoRemediationForId(params.id);
+      }
+
+      if (!nextDraft) {
+        if (!cancelled) {
+          setDraft(null);
+          setDocument(null);
+          setRegulation(null);
+          setLoading(false);
+        }
+        return;
       }
 
       if (cancelled) return;
       setDraft(nextDraft);
+      setRailDrafts((current) => {
+        const next = mergeRemediationDrafts(current, [nextDraft]);
+        writeCachedRailDrafts(next);
+        return next;
+      });
 
       getDocument(nextDraft.document_id)
         .then((doc) => !cancelled && setDocument(doc))
@@ -105,6 +200,7 @@ export default function RemediationReviewPage({ params }: { params: { id: string
         );
 
       void loadRegulations();
+      void loadRailDrafts();
       setLoading(false);
     }
 
@@ -112,7 +208,7 @@ export default function RemediationReviewPage({ params }: { params: { id: string
     return () => {
       cancelled = true;
     };
-  }, [loadRegulations, params.id]);
+  }, [loadRailDrafts, loadRegulations, params.id]);
 
   async function handleDecision(decision: "APPROVED" | "REJECTED") {
     if (!draft) return;
@@ -139,13 +235,36 @@ export default function RemediationReviewPage({ params }: { params: { id: string
 
   async function handleRunAssessment(target: RegulationResponse) {
     setAssessing(true);
+    const minimumAnimation = waitForAssessmentAnimation();
     try {
       setImpact(await runImpactAssessment(target.id));
     } catch {
       setImpact(demoImpactForRegulation(target.id));
     } finally {
+      await minimumAnimation;
       setAssessing(false);
     }
+  }
+
+  function handleFetchRail() {
+    void loadRegulations();
+    void loadRailDrafts();
+  }
+
+  function handleOpenDraftForRegulation(target: RegulationResponse) {
+    const existingDraft =
+      railDrafts.find((item) => item.regulation_id === target.id) ??
+      (draft?.regulation_id === target.id ? draft : null);
+    const nextDraft = existingDraft ?? (hasCompletedAssessment(target, impact, null) ? demoRemediationForRegulation(target.id) : null);
+
+    if (!nextDraft) return;
+
+    setRailDrafts((current) => {
+      const next = mergeRemediationDrafts(current, [nextDraft]);
+      writeCachedRailDrafts(next);
+      return next;
+    });
+    router.push(`/remediation/${nextDraft.id}`);
   }
 
   function openEditModal() {
@@ -183,10 +302,16 @@ export default function RemediationReviewPage({ params }: { params: { id: string
 
             <h1 className="mt-6 text-2xl font-extrabold text-white">Remediation Drafts</h1>
 
-            {loading || !draft ? (
+            {assessing ? (
+              <AssessmentLoadingView />
+            ) : loading ? (
               <div className="mt-8 flex h-40 items-center justify-center gap-3 rounded-lg border border-slate-700 bg-[#081024] text-slate-400">
                 <Loader2 className="h-5 w-5 animate-spin" />
                 Loading remediation draft
+              </div>
+            ) : !draft ? (
+              <div className="mt-8 rounded-lg border border-amber-500/30 bg-amber-500/10 px-5 py-4 text-sm font-semibold text-amber-100">
+                Remediation draft could not be found for this case.
               </div>
             ) : (
               <div className="mt-8 space-y-10">
@@ -243,8 +368,11 @@ export default function RemediationReviewPage({ params }: { params: { id: string
         selectedId={selectedRegulationId}
         loading={regulationsLoading}
         impact={impact}
+        currentDraft={draft}
+        railDrafts={railDrafts}
         assessing={assessing}
-        onFetch={() => void loadRegulations()}
+        onFetch={handleFetchRail}
+        onOpenDraft={handleOpenDraftForRegulation}
         onRun={(target) => void handleRunAssessment(target)}
       />
 
@@ -344,16 +472,22 @@ function RegulationRail({
   selectedId,
   loading,
   impact,
+  currentDraft,
+  railDrafts,
   assessing,
   onFetch,
+  onOpenDraft,
   onRun,
 }: {
   regulations: RegulationResponse[];
   selectedId: string | null;
   loading: boolean;
   impact: ImpactResponse | null;
+  currentDraft: RemediationResponse | null;
+  railDrafts: RemediationResponse[];
   assessing: boolean;
   onFetch: () => void;
+  onOpenDraft: (regulation: RegulationResponse) => void;
   onRun: (regulation: RegulationResponse) => void;
 }) {
   return (
@@ -371,11 +505,14 @@ function RegulationRail({
       <div className="space-y-5">
         {regulations.map((item) => {
           const active = item.id === selectedId;
-          const analyzed = impact?.regulation_id === item.id || item.status === "ANALYSIS_COMPLETE";
-          const isUnopened = item.status === "Not Analyzed" || item.status === "pending_analysis";
-          const isClosed = item.status === "Closed";
-          const badgeLabel = isClosed ? "Closed Case" : (isUnopened ? "Unopened" : "Active Case");
-          const badgeTone = isClosed ? "emerald" : (isUnopened ? "slate" : "blue");
+          const remediationDraft =
+            railDrafts.find((draft) => draft.regulation_id === item.id) ??
+            (currentDraft?.regulation_id === item.id ? currentDraft : null);
+          const analyzed = hasCompletedAssessment(item, impact, remediationDraft);
+          const isClosed = normalizedStatus(item.status) === "closed";
+          const isUnopened = !analyzed && ["not_analyzed", "pending_analysis", ""].includes(normalizedStatus(item.status));
+          const badgeLabel = isClosed ? "Closed Case" : analyzed ? "Active Case" : "Pending Analysis";
+          const badgeTone = isClosed ? "emerald" : analyzed ? "blue" : "amber";
           return (
             <article
               key={item.id}
@@ -384,16 +521,28 @@ function RegulationRail({
                 active ? "border-blue-500 shadow-[0_0_0_1px_rgba(37,99,235,0.35)]" : "border-slate-700"
               )}
             >
-              <h2 className="line-clamp-3 text-sm font-extrabold uppercase leading-5 text-white">{item.title}</h2>
-              <p className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-slate-400">
-                <Link2 className="h-3.5 w-3.5" />
-                {hostFor(item.source_url)}
-              </p>
+              <button
+                type="button"
+                onClick={() => onOpenDraft(item)}
+                disabled={!analyzed}
+                aria-pressed={active}
+                className="block w-full text-left disabled:cursor-not-allowed disabled:opacity-70"
+                title={isUnopened ? "Run impact assessment before opening remediation drafts." : undefined}
+              >
+                <h2 className="line-clamp-3 text-sm font-extrabold uppercase leading-5 text-white">{item.title}</h2>
+                <p className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-slate-400">
+                  <Link2 className="h-3.5 w-3.5" />
+                  {hostFor(item.source_url)}
+                </p>
+              </button>
               <div className="mt-3 flex items-center justify-between gap-3">
                 <StatusBadge label={badgeLabel} tone={badgeTone} />
                 <button
                   type="button"
-                  onClick={() => onRun(item)}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onRun(item);
+                  }}
                   disabled={assessing || isClosed}
                   className="inline-flex h-7 items-center gap-1.5 rounded-md bg-blue-600 px-3 text-[11px] font-bold text-white hover:bg-blue-500 disabled:opacity-60"
                 >

@@ -30,7 +30,7 @@ This ticket represents the implementation work for the user story in **EPIC 11 â
 ## Integration Contract
 *   **Client Codegen Script (`package.json`):**
     Configure a typescript compilation script:
-    `"codegen": "openapi-typescript ../shared/openapi/sentinel-os.yaml --output ./src/types/generated/index.ts"`
+    `"codegen": "openapi-typescript ../shared/openapi/arex.yaml --output ./src/types/generated/index.ts"`
 
 ## Junior Developer Tips & Pitfalls
 1.  **Local vs Cloud Hardware Switch:** To prevent local systems from running out of VRAM, implement a configuration toggle in `.env`. Check the variable on system startup: if true, route embeddings and prompts to hosted inference providers (e.g. Fireworks API); if false, use the local ROCm PyTorch backend device.

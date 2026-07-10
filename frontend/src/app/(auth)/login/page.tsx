@@ -47,7 +47,7 @@ export default function LoginPage() {
           <div className="space-y-8 bg-slate-950/50 p-8 rounded-2xl border border-slate-800 shadow-xl backdrop-blur-md motion-safe:transition-shadow motion-safe:duration-500 hover:shadow-2xl hover:shadow-blue-950/20">
             <div className="text-center">
               <h2 className="mt-6 text-3xl font-bold tracking-tight text-white">
-                Sign in to Sentinel OS
+                Sign in to AREX
               </h2>
               <p className="mt-2 text-sm text-slate-400">
                 Secure multi-tenant workspace login

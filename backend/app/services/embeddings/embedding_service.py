@@ -5,7 +5,7 @@ from typing import List
 
 from app.core.config import settings
 
-logger = logging.getLogger("sentinel-os.embedding-service")
+logger = logging.getLogger("arex.embedding-service")
 
 # Gemini embedding dimension for text-embedding-004
 GEMINI_EMBEDDING_DIM = 768

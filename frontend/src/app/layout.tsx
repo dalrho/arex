@@ -5,10 +5,10 @@ import "../styles/globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Sentinel OS — FDA 21 CFR Part 11 Compliance Platform",
+  title: "AREX — FDA 21 CFR Part 11 Compliance Platform",
   description: "AI-powered regulatory intelligence, document remediation, and compliance workflow tracking.",
   icons: {
-    icon: "/brand/sentinel-os-logo.svg",
+    icon: "/brand/arex-logo.png",
   },
 };
 
