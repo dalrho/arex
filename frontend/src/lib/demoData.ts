@@ -149,7 +149,7 @@ Applies to all employees, contractors, and system administrators with access to 
 export function getDemoDocumentContent(id: string): string {
   return (
     demoDocumentContent[id] ??
-    `Sentinel OS demo document content for ${id}.\n\nThis controlled source document is available for assessment and remediation workflows.`
+    `AREX demo document content for ${id}.\n\nThis controlled source document is available for assessment and remediation workflows.`
   );
 }
 
@@ -176,6 +176,35 @@ export const demoRemediations: RemediationResponse[] = [
     created_at: "2026-07-09T08:12:00.000Z",
   },
 ];
+
+export function demoRemediationForRegulation(regulationId: string): RemediationResponse {
+  const existing = demoRemediations.find((draft) => draft.regulation_id === regulationId);
+  if (existing) return existing;
+
+  const base = demoRemediations[0];
+  return {
+    ...base,
+    id: `demo-remediation-${regulationId}`,
+    regulation_id: regulationId,
+  };
+}
+
+export function demoRemediationsForRegulation(regulationId: string): RemediationResponse[] {
+  const existing = demoRemediations.filter((draft) => draft.regulation_id === regulationId);
+  return existing.length > 0 ? existing : [demoRemediationForRegulation(regulationId)];
+}
+
+export function demoRemediationForId(remediationId: string): RemediationResponse | null {
+  const existing = demoRemediations.find((draft) => draft.id === remediationId);
+  if (existing) return existing;
+
+  const syntheticPrefix = "demo-remediation-";
+  if (remediationId.startsWith(syntheticPrefix)) {
+    return demoRemediationForRegulation(remediationId.slice(syntheticPrefix.length));
+  }
+
+  return null;
+}
 
 export const demoTasks: TaskResponse[] = [
   {

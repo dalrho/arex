@@ -1,8 +1,8 @@
 import type { AuthUser } from "@/types/api";
 
 /** Derives a friendly display name from the account email. */
-export function getAccountDisplayName(user: AuthUser | null): string {
-  if (!user?.email) return "there";
+export function getAccountDisplayName(user: AuthUser | null, fallback = "QA"): string {
+  if (!user?.email) return fallback;
   const local = user.email.split("@")[0] ?? user.email;
   const first = local.split(/[._-]/)[0] ?? local;
   if (first.length <= 3) return first.toUpperCase();

@@ -1,5 +1,5 @@
 /**
- * Sentinel OS — API client helper wrapper.
+ * AREX — API client helper wrapper.
  * Integrates with standard Fetch API, handling base URL, authorization tokens,
  * and safety-critical X-Tenant-ID headers for multi-tenant isolation.
  */

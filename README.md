@@ -1,6 +1,6 @@
-# Sentinel OS
+# AREX
 
-Sentinel OS is a high-fidelity regulatory compliance intelligence platform designed to automate and streamline compliance mapping for **FDA 21 CFR Part 11**. It bridges AI orchestration layers (via LangGraph agents) with deterministic workflows and human approval gates to ensure GxP audit-readiness.
+AREX is a high-fidelity regulatory compliance intelligence platform designed to automate and streamline compliance mapping for **FDA 21 CFR Part 11**. It bridges AI orchestration layers (via LangGraph agents) with deterministic workflows and human approval gates to ensure GxP audit-readiness.
 
 ---
 
@@ -9,7 +9,7 @@ Sentinel OS is a high-fidelity regulatory compliance intelligence platform desig
 The workspace is a monorepo structured as follows:
 - **`backend/`**: FastAPI app (Python 3.11), SQLAlchemy ORM models, LangGraph agents, and background workers.
 - **`frontend/`**: Next.js 14 (App Router) client-facing application using vanilla CSS and Tailwind primitives.
-- **`shared/`**: OpenAPI spec contract (`sentinel-os.yaml`) serving as the single source of truth.
+- **`shared/`**: OpenAPI spec contract (`arex.yaml`) serving as the single source of truth.
 - **`infra/`**: Docker setups, seeding utilities, and PostgreSQL migration schemas.
 - **`docs/`**: ADRs (Architecture Decision Records), decision logs, and regulatory mappings.
 
@@ -18,7 +18,7 @@ The workspace is a monorepo structured as follows:
 ## 2. API Compatibility (Fireworks.ai & Google Gemini)
 
 ### Core Architecture
-Sentinel OS uses standard OpenAI-compatible client schemas for both LLM text generation and token embeddings. This means the system is fully compatible out-of-the-box with **both** your production provider (**Fireworks.ai**) and testing/free tier provider (**Google Gemini**) using Gemini's OpenAI-compatibility layer.
+AREX uses standard OpenAI-compatible client schemas for both LLM text generation and token embeddings. This means the system is fully compatible out-of-the-box with **both** your production provider (**Fireworks.ai**) and testing/free tier provider (**Google Gemini**) using Gemini's OpenAI-compatibility layer.
 
 ### How to Configure `.env`
 
@@ -57,7 +57,7 @@ EMBEDDING_MODEL_NAME=text-embedding-004
 ## 3. Run and Test Commands
 
 ### Running the Services
-Sentinel OS uses Docker Compose to manage PostgreSQL, Qdrant, FastAPI backend, and Next.js frontend services.
+AREX uses Docker Compose to manage PostgreSQL, Qdrant, FastAPI backend, and Next.js frontend services.
 
 *   **Spin Up Services (in detached mode):**
     ```bash

@@ -29,7 +29,7 @@ def get_dashboard_metrics(
     tenant_id: str = Depends(get_tenant_id)
 ) -> Any:
     """
-    Retrieve aggregated metrics and recent activity for the Sentinel OS dashboard view.
+    Retrieve aggregated metrics and recent activity for the AREX dashboard view.
     """
     org_id = uuid.UUID(tenant_id)
 

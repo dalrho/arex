@@ -12,7 +12,7 @@ from app.ai.agents.regulatory_intelligence_agent import run_regulatory_intellige
 from app.ai.agents.remediation_agent import run_remediation_agent
 from app.ai.agents.implementation_agent import run_implementation_agent
 
-logger = logging.getLogger("sentinel-os.graph-builder")
+logger = logging.getLogger("arex.graph-builder")
 
 class AgentState(TypedDict):
     regulation_id: str

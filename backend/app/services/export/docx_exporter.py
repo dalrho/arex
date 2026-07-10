@@ -13,7 +13,7 @@ def generate_docx_report(draft: RemediationDraft, doc: Document, reg: Regulation
     document = docx.Document()
     
     # Title Section
-    title = document.add_heading("SENTINEL OS - REGULATORY COMPLIANCE EXPORT", level=0)
+    title = document.add_heading("AREX - REGULATORY COMPLIANCE EXPORT", level=0)
     
     # Metadata Block
     p = document.add_paragraph()

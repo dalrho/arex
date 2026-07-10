@@ -4,7 +4,7 @@ from typing import Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-logger = logging.getLogger("sentinel-os.tasks")
+logger = logging.getLogger("arex.tasks")
 
 from app.core.dependencies import get_db, get_tenant_id
 from app.models.implementation_task import ImplementationTask

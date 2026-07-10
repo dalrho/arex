@@ -5,7 +5,7 @@ from typing import Dict, Any
 from app.ai.llm_client import llm_client
 from app.api.v1.schemas.regulation import RegulatoryIntelligenceOutput
 
-logger = logging.getLogger("sentinel-os.regulatory-intelligence-agent")
+logger = logging.getLogger("arex.regulatory-intelligence-agent")
 
 def run_regulatory_intelligence(state: Dict[str, Any]) -> Dict[str, Any]:
     """

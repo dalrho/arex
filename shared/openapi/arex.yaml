@@ -1,6 +1,6 @@
 openapi: 3.1.0
 info:
-  title: Sentinel OS
+  title: AREX
   description: Regulatory compliance intelligence platform for FDA 21 CFR Part 11
   version: 1.0.0
 paths:
@@ -661,7 +661,7 @@ paths:
       tags:
       - Dashboard
       summary: Get Dashboard Metrics
-      description: Retrieve aggregated metrics and recent activity for the Sentinel
+      description: Retrieve aggregated metrics and recent activity for the AREX
         OS dashboard view.
       operationId: get_dashboard_metrics_api_v1_dashboard__get
       parameters:

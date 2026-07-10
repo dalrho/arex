@@ -29,7 +29,7 @@ from app.services.embeddings.embedding_service import embedding_service
 from app.services.vector_db.qdrant_client import vector_db_client
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("sentinel-os.seed")
+logger = logging.getLogger("arex.seed")
 
 # High-Fidelity Mock SOP Contents
 SOP_101_TEXT = """

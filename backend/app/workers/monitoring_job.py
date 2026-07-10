@@ -2,7 +2,7 @@ import logging
 from app.core.dependencies import SessionLocal
 from app.services.fda_monitoring.poller import poll_fda_regulations
 
-logger = logging.getLogger("sentinel-os.monitoring-job")
+logger = logging.getLogger("arex.monitoring-job")
 
 def run_monitoring_job(limit: int = 10) -> int:
     """

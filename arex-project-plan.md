@@ -1,4 +1,4 @@
-# Sentinel OS — Project Layout & Task Breakdown
+# AREX — Project Layout & Task Breakdown
 **Prepared as:** Pre-development planning artifact
 **Scope:** FDA 21 CFR Part 11 regulatory intelligence MVP (AMD Developer Challenge)
 
@@ -9,7 +9,7 @@
 This is a **monorepo** layout. It keeps the AI orchestration layer (LangGraph agents) architecturally separate from deterministic backend services, per the system architecture diagram, while sharing infra/config at the root. Docker Compose ties everything together for the hackathon deployment target.
 
 ```
-sentinel-os/
+arex/
 ├── README.md
 ├── docker-compose.yml
 ├── docker-compose.override.yml          # local dev overrides (hot reload, exposed ports)
@@ -197,7 +197,7 @@ sentinel-os/
 │
 └── shared/
     ├── openapi/
-    │   └── sentinel-os.yaml               # single source of truth for API contract
+    │   └── arex.yaml               # single source of truth for API contract
     └── constants/
         └── regulation_categories.json
 ```
@@ -215,7 +215,7 @@ sentinel-os/
 **Goal:** QA Manager can upload QMS documents and have them searchable in the knowledge base.
 
 - **User Story 1.1:** *As a QA Manager, I want to upload SOPs, validation plans, and policies so the system can assess them against future regulations.*
-  - Define API contract: `POST /v1/documents`, `GET /v1/documents`, `GET /v1/documents/{id}` (request/response schemas, file size limits, allowed MIME types) — document in `shared/openapi/sentinel-os.yaml`.
+  - Define API contract: `POST /v1/documents`, `GET /v1/documents`, `GET /v1/documents/{id}` (request/response schemas, file size limits, allowed MIME types) — document in `shared/openapi/arex.yaml`.
   - Build backend `regulation_parser`-style ingestion pipeline for company docs (PyMuPDF/pdfplumber text extraction).
   - Implement chunking strategy + `embedding_service` integration (BGE-M3/BGE-large).
   - Implement `qdrant_client` upsert logic with metadata (doc type, department, version).
@@ -362,7 +362,7 @@ sentinel-os/
 The guiding principle: **build the deterministic data spine before the AI agents**, because every agent needs real data (documents, embeddings, a regulation record) to operate on — building agents first means mocking everything and re-doing integration later.
 
 1. **Infra & scaffolding** — Docker Compose (Postgres, Qdrant, backend, frontend skeletons), env config, CI shell. *Nothing else can be tested without this.*
-2. **API contract first** — Draft `shared/openapi/sentinel-os.yaml` for all major resources (documents, regulations, impact, remediation, tasks, approvals) before writing implementation. This lets frontend and backend work in parallel from day one against typed mocks.
+2. **API contract first** — Draft `shared/openapi/arex.yaml` for all major resources (documents, regulations, impact, remediation, tasks, approvals) before writing implementation. This lets frontend and backend work in parallel from day one against typed mocks.
 3. **Auth & multi-tenancy skeleton** — Get login + org scoping working early since almost every other model hangs off `organization_id` and `user_id`.
 4. **Epic 1 (Document Ingestion)** — Upload, parse, embed, index. This is the foundation the Impact Engine and Remediation Agent both depend on.
 5. **Epic 2 (Regulatory Monitoring)** — Get real or seeded regulation records into the system (even a manual "ingest this regulation" admin endpoint is fine for MVP before the live poller is finished — unblocks agent work immediately).

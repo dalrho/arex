@@ -22,8 +22,8 @@ export interface AIStatusResponse {
 const API_BASE = "/api/v1";
 const DEFAULT_TENANT_ID = "9280d0d8-5527-4632-bd92-4fcf05c75462";
 
-const TOKEN_KEY = "sentinel_token";
-const USER_KEY = "sentinel_user";
+const TOKEN_KEY = "arex_token";
+const USER_KEY = "arex_user";
 
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;

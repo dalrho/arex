@@ -9,7 +9,7 @@ from app.models.remediation_draft import RemediationDraft
 from app.models.implementation_task import ImplementationTask
 from app.ai.llm_client import llm_client
 
-logger = logging.getLogger("sentinel-os.implementation-agent")
+logger = logging.getLogger("arex.implementation-agent")
 
 class TaskItem(BaseModel):
     title: str

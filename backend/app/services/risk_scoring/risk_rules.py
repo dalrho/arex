@@ -1,6 +1,6 @@
 import logging
 
-logger = logging.getLogger("sentinel-os.risk-rules")
+logger = logging.getLogger("arex.risk-rules")
 
 def calculate_risk_score(urgency: str, category: str, affected_departments_count: int) -> dict:
     """

@@ -4,7 +4,7 @@ services:
   # postgres: Relational database to store metadata, users, organizations, approval records, and tasks
   postgres:
     image: postgres:16-alpine
-    container_name: sentinel-postgres
+    container_name: arex-postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -12,20 +12,20 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
-      - sentinel-network
+      - arex-network
     restart: unless-stopped
 
   # qdrant: Vector database for semantic document chunk storage and fast RAG lookups
   qdrant:
     image: qdrant/qdrant:latest
-    container_name: sentinel-qdrant
+    container_name: arex-qdrant
     expose:
       - "6333"
       - "6334"
     volumes:
       - qdrant_data:/qdrant/storage
     networks:
-      - sentinel-network
+      - arex-network
     restart: unless-stopped
 
   # backend: FastAPI web server containing deterministic compliance validation & LangGraph AI agents
@@ -33,7 +33,7 @@ services:
     build:
       context: .
       dockerfile: infra/docker/backend.Dockerfile
-    container_name: sentinel-backend
+    container_name: arex-backend
     expose:
       - "8000"
     environment:
@@ -43,7 +43,7 @@ services:
       - postgres
       - qdrant
     networks:
-      - sentinel-network
+      - arex-network
     restart: unless-stopped
 
   # frontend: Next.js client-facing web application for managing SOPs, regulations, drafts, and compliance status
@@ -51,13 +51,13 @@ services:
     build:
       context: .
       dockerfile: infra/docker/frontend.Dockerfile
-    container_name: sentinel-frontend
+    container_name: arex-frontend
     expose:
       - "3000"
     depends_on:
       - backend
     networks:
-      - sentinel-network
+      - arex-network
     restart: unless-stopped
 
 volumes:
@@ -67,5 +67,5 @@ volumes:
     driver: local
 
 networks:
-  sentinel-network:
+  arex-network:
     driver: bridge

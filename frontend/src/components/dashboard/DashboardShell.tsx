@@ -18,7 +18,7 @@ import clsx from "clsx";
 import { clearSession, getCurrentUser, getAiStatus, type AIStatusResponse } from "@/lib/apiClient";
 import type { AuthUser } from "@/types/api";
 
-const BRAND_LOGO_SRC = "/brand/sentinel-os-logo.svg";
+const BRAND_LOGO_SRC = "/brand/arex-logo.png";
 
 const navigation = [
   { label: "Regulations", href: "/regulations", icon: Scale },
@@ -212,22 +212,16 @@ function Sidebar({
       <Link
         href="/regulations"
         onClick={onNavigate}
-        className="flex h-shell-header items-center gap-3 border-b border-slate-800 px-7"
+        className="flex h-shell-header items-center justify-center border-b border-slate-800 px-4"
       >
         <Image
           src={BRAND_LOGO_SRC}
-          alt="Sentinel OS"
-          width={36}
-          height={36}
-          className="h-9 w-9 rounded-xl shadow-[0_0_24px_rgba(14,116,233,0.35)]"
+          alt="AREX"
+          width={144}
+          height={42}
+          className="h-7 w-auto max-w-[8.5rem] object-contain drop-shadow-[0_0_14px_rgba(14,116,233,0.24)]"
           priority
         />
-        <div className="min-w-0">
-          <p className="truncate text-lg font-bold leading-none text-white">Sentinel OS</p>
-          <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Validated QMS
-          </p>
-        </div>
       </Link>
 
       {/* AI Mode indicator — sits just below the logo */}

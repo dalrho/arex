@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useMemo } from "react";
+import React, { Suspense, useEffect, useState, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Loader2, ArrowLeft, RefreshCw, AlertCircle, CheckCircle2, ClipboardCheck, ArrowUpRight } from "lucide-react";
@@ -9,7 +9,7 @@ import StatusBadge from "@/components/ui/StatusBadge";
 import { generateImplementationTasks, syncTasksToJira, updateTask, listTasks, getRegulation } from "@/lib/apiClient";
 import type { TaskResponse } from "@/types/api";
 
-export default function CaseImplementationPage({ params }: { params: { id: string } }) {
+function CaseImplementationPage({ params }: { params: { id: string } }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const regulationId = params.id;
@@ -309,5 +309,19 @@ export default function CaseImplementationPage({ params }: { params: { id: strin
         </div>
       </main>
     </div>
+  );
+}
+
+export default function CaseImplementationPageWrapper({ params }: { params: { id: string } }) {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex h-full items-center justify-center bg-[#020613] text-slate-400">
+          <Loader2 className="h-5 w-5 animate-spin" />
+        </div>
+      }
+    >
+      <CaseImplementationPage params={params} />
+    </Suspense>
   );
 }
