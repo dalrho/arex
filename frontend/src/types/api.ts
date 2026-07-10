@@ -84,15 +84,22 @@ export type RemediationStatus = "PENDING_REVIEW" | "APPROVED" | "REJECTED";
 export interface RemediationResponse {
   id: string;
   document_id: string;
+  sop_id?: string;
+  sopId?: string;
   regulation_id: string;
   proposed_text: string;
+  proposed_revision?: string;
+  proposedRevision?: string;
   original_text: string;
+  current_content?: string;
+  currentContent?: string;
   diff_content: DiffContent | null;
   status: RemediationStatus | string;
   reviewer_id: string | null;
   reviewed_at: string | null;
   created_at: string;
   explanation?: string | null;
+  comments?: string | null;
   requires_tasks?: boolean | null;
 }
 

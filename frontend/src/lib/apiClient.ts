@@ -167,8 +167,9 @@ export function runImpactAssessment(regulationId: string): Promise<ImpactRespons
   return sendJson(`/impact/regulation/${regulationId}/assess`, "POST");
 }
 
-export function listRemediations(): Promise<RemediationResponse[]> {
-  return getJson("/remediation");
+export function listRemediations(regulationId?: string): Promise<RemediationResponse[]> {
+  const query = regulationId ? `?regulation_id=${regulationId}` : "";
+  return getJson(`/remediation${query}`);
 }
 
 export function getRemediation(id: string): Promise<RemediationResponse> {
@@ -177,9 +178,17 @@ export function getRemediation(id: string): Promise<RemediationResponse> {
 
 export function updateRemediation(
   id: string,
-  proposedText: string
+  proposedText: string,
+  comments?: string
 ): Promise<RemediationResponse> {
-  return sendJson(`/remediation/${id}`, "PUT", { proposed_text: proposedText });
+  return sendJson(`/remediation/${id}`, "PUT", {
+    proposed_text: proposedText,
+    comments: comments,
+  });
+}
+
+export function resetRemediation(id: string): Promise<RemediationResponse> {
+  return sendJson(`/remediation/${id}/reset`, "POST");
 }
 
 export function generateRemediationDrafts(
@@ -193,7 +202,7 @@ export function generateRemediationDrafts(
 
 export function submitApprovalDecision(
   remediationId: string,
-  decision: "APPROVED" | "REJECTED"
+  decision: string
 ): Promise<ApprovalRecordResponse> {
   return sendJson(`/approvals/remediation/${remediationId}`, "POST", { decision });
 }

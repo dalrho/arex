@@ -42,7 +42,7 @@ def export_remediation_pdf(
             detail=f"Cannot export unapproved drafts. Draft status must be APPROVED, but is '{draft.status}'."
         )
 
-    doc = db.query(Document).filter(Document.id == draft.document_id).first()
+    doc = db.query(Document).filter(Document.id == draft.sop_id).first()
     reg = db.query(RegulationUpdate).filter(RegulationUpdate.id == draft.regulation_id).first()
 
     if not doc or not reg:
@@ -89,7 +89,7 @@ def export_remediation_docx(
             detail=f"Cannot export unapproved drafts. Draft status must be APPROVED, but is '{draft.status}'."
         )
 
-    doc = db.query(Document).filter(Document.id == draft.document_id).first()
+    doc = db.query(Document).filter(Document.id == draft.sop_id).first()
     reg = db.query(RegulationUpdate).filter(RegulationUpdate.id == draft.regulation_id).first()
 
     if not doc or not reg:

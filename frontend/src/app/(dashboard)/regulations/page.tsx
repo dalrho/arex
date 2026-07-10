@@ -185,10 +185,9 @@ function RegulationsPage() {
         setImpact(null);
       });
 
-    listRemediations()
+    listRemediations(openedId)
       .then((drafts) => {
-        const filtered = drafts.filter((d) => d.regulation_id === openedId);
-        setRemediationDrafts(filtered);
+        setRemediationDrafts(drafts);
       })
       .catch(() => {});
 
@@ -1022,7 +1021,7 @@ function AssessmentSummary({
         {impact.affected_documents && impact.affected_documents.length > 0 && (
           <button
             type="button"
-            onClick={() => onOpenCitation(impact.affected_documents[0])}
+            onClick={() => impact.affected_documents?.[0] && onOpenCitation(impact.affected_documents[0])}
             className="inline-flex items-center gap-1.5 rounded-md border border-blue-500/40 bg-blue-500/10 px-2 py-0.5 text-[11px] font-semibold text-blue-200 hover:bg-blue-500/20"
           >
             <ShieldCheck className="h-3.5 w-3.5" />
