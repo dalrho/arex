@@ -14,13 +14,19 @@ class VectorDBClient:
         self.client = RealQdrantClient(url=self.url)
         self.collection_name = "arex_docs"
 
-    def init_collection(self) -> None:
+    def init_collection(self, force_recreate: bool = False) -> None:
         """
         Ensures the vector collection exists in Qdrant.
+        When force_recreate=True the existing collection is dropped first,
+        clearing all stored embeddings (used by the admin data reset).
         """
         try:
             collections = self.client.get_collections()
             exist = any(c.name == self.collection_name for c in collections.collections)
+            if exist and force_recreate:
+                logger.warning(f"Dropping Qdrant collection '{self.collection_name}' for reset.")
+                self.client.delete_collection(collection_name=self.collection_name)
+                exist = False
             if not exist:
                 logger.info(f"Creating Qdrant collection: {self.collection_name}")
                 self.client.create_collection(

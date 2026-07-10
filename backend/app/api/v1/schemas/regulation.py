@@ -14,10 +14,17 @@ class RegulationResponse(BaseModel):
     status: str
     audit_history: Optional[List[Dict[str, Any]]] = None
     created_at: datetime
-    
+
+    # Source tracking
+    source: str = "FDA_API"
+    document_number: Optional[str] = None
+    effective_date: Optional[datetime] = None
+    summary: Optional[str] = None
+    regulatory_authority: Optional[str] = None
+    category: Optional[str] = None
+
     # AI agent verdicts
     relevant: Optional[bool] = None
-    category: Optional[str] = None
     urgency: Optional[str] = None
     affected_business_areas: Optional[List[str]] = None
     rationale: Optional[str] = None
@@ -32,4 +39,3 @@ class RegulatoryIntelligenceOutput(BaseModel):
     urgency: str  # Enum: "low", "medium", "high", "critical"
     affected_business_areas: List[str]
     rationale: str  # Markdown text explaining decision
-

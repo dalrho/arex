@@ -1,0 +1,209 @@
+"use client";
+
+import React, { useCallback, useEffect, useState } from "react";
+import { AlertTriangle, BarChart3, Database, Download, Loader2, RefreshCw, Trash2, Upload } from "lucide-react";
+import { getAdminStats, resetApplicationData } from "@/lib/apiClient";
+import type { DataStats } from "@/types/api";
+
+export default function DataManagementPage() {
+  const [stats, setStats] = useState<DataStats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetInput, setResetInput] = useState("");
+  const [resetting, setResetting] = useState(false);
+  const [resetMsg, setResetMsg] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadStats = useCallback(async () => {
+    setLoading(true);
+    try {
+      const s = await getAdminStats();
+      setStats(s);
+    } catch {
+      setError("Could not load data statistics. Ensure the backend is running.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void loadStats(); }, [loadStats]);
+
+  async function handleReset() {
+    if (resetInput !== "RESET") return;
+    setResetting(true);
+    try {
+      const res = await resetApplicationData();
+      setResetMsg(res.message);
+      setResetOpen(false);
+      setResetInput("");
+      void loadStats();
+    } catch (e: any) {
+      setError(e?.message || "Reset failed.");
+    } finally {
+      setResetting(false);
+    }
+  }
+
+  return (
+    <div className="min-h-full overflow-y-auto bg-[#020613] px-6 py-8 md:px-10">
+      <div className="mx-auto max-w-3xl space-y-8">
+        {/* Header */}
+        <div>
+          <span className="text-[10px] font-extrabold uppercase tracking-wider text-blue-400">Settings</span>
+          <h1 className="mt-1 text-2xl font-extrabold text-white">Data Management</h1>
+          <p className="mt-1 text-sm text-slate-400">
+            View your regulatory database statistics, export or import data, and reset the application to a clean state.
+          </p>
+        </div>
+
+        {resetMsg && (
+          <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-200 flex justify-between">
+            <span>{resetMsg}</span>
+            <button onClick={() => setResetMsg(null)} className="ml-4 text-emerald-400 hover:text-white">✕</button>
+          </div>
+        )}
+        {error && (
+          <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-200 flex justify-between">
+            <span>{error}</span>
+            <button onClick={() => setError(null)} className="ml-4 text-rose-400 hover:text-white">✕</button>
+          </div>
+        )}
+
+        {/* Application Data Stats */}
+        <section className="rounded-2xl border border-slate-700 bg-[#081024] p-6 space-y-5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <BarChart3 className="h-5 w-5 text-blue-400" />
+              <h2 className="text-sm font-extrabold uppercase tracking-wider text-slate-200">Application Data</h2>
+            </div>
+            <button
+              onClick={() => void loadStats()}
+              disabled={loading}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+              Refresh
+            </button>
+          </div>
+
+          {loading ? (
+            <div className="flex items-center gap-2 text-slate-400 py-4">
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading statistics…
+            </div>
+          ) : stats ? (
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+              {[
+                { label: "Regulations", value: stats.total_regulations },
+                { label: "Compliance Cases", value: stats.total_compliance_cases },
+                { label: "Knowledge Base Docs", value: stats.total_knowledge_base_documents },
+                { label: "Impact Assessments", value: stats.total_impact_assessments },
+                { label: "Remediation Drafts", value: stats.total_remediation_drafts },
+                { label: "Implementation Tasks", value: stats.total_implementation_tasks },
+              ].map(({ label, value }) => (
+                <div key={label} className="rounded-xl border border-slate-800 bg-[#040816] p-4">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{label}</p>
+                  <p className="mt-1 text-2xl font-extrabold text-white">{value}</p>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </section>
+
+        {/* Export / Import */}
+        <section className="rounded-2xl border border-slate-700 bg-[#081024] p-6 space-y-4">
+          <div className="flex items-center gap-2">
+            <Database className="h-5 w-5 text-blue-400" />
+            <h2 className="text-sm font-extrabold uppercase tracking-wider text-slate-200">Data Transfer</h2>
+          </div>
+          <p className="text-xs text-slate-500">Export or import your regulatory database for backup or migration purposes.</p>
+          <div className="flex flex-wrap gap-3">
+            <button
+              disabled
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/60 px-4 py-2 text-sm font-semibold text-slate-500 cursor-not-allowed"
+              title="Coming soon"
+            >
+              <Download className="h-4 w-4" /> Export Data
+              <span className="ml-1 text-[10px] font-bold text-slate-600 bg-slate-800 px-1.5 py-0.5 rounded">Soon</span>
+            </button>
+            <button
+              disabled
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/60 px-4 py-2 text-sm font-semibold text-slate-500 cursor-not-allowed"
+              title="Coming soon"
+            >
+              <Upload className="h-4 w-4" /> Import Data
+              <span className="ml-1 text-[10px] font-bold text-slate-600 bg-slate-800 px-1.5 py-0.5 rounded">Soon</span>
+            </button>
+          </div>
+        </section>
+
+        {/* Danger Zone */}
+        <section className="rounded-2xl border border-rose-500/30 bg-rose-500/5 p-6 space-y-4">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-rose-400" />
+            <h2 className="text-sm font-extrabold uppercase tracking-wider text-rose-300">Danger Zone</h2>
+          </div>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-sm font-semibold text-slate-200">Reset Application Data</p>
+              <p className="mt-1 text-xs text-slate-400">
+                Permanently deletes all regulations, documents, compliance cases, AI outputs, and vector embeddings. This action cannot be undone.
+              </p>
+            </div>
+            <button
+              onClick={() => setResetOpen(true)}
+              className="shrink-0 inline-flex items-center gap-2 rounded-lg border border-rose-500/40 bg-rose-500/10 px-4 py-2 text-sm font-bold text-rose-300 hover:bg-rose-500/20"
+            >
+              <Trash2 className="h-4 w-4" /> Reset
+            </button>
+          </div>
+        </section>
+      </div>
+
+      {/* Reset Confirmation Dialog */}
+      {resetOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4">
+          <div className="w-full max-w-md rounded-2xl border border-rose-500/30 bg-[#0d0a14] p-8 shadow-2xl space-y-6">
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-rose-500/15 border border-rose-500/30">
+                <AlertTriangle className="h-5 w-5 text-rose-400" />
+              </span>
+              <h3 className="text-lg font-extrabold text-white">Reset Application Data</h3>
+            </div>
+            <p className="text-sm text-slate-300 leading-6">
+              This action <strong className="text-white">permanently deletes</strong> all uploaded regulations, documents, compliance cases, AI outputs, and vector embeddings.
+            </p>
+            <p className="text-sm font-bold text-rose-400">This action cannot be undone.</p>
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
+                Type <span className="text-white font-mono">RESET</span> to continue
+              </label>
+              <input
+                type="text"
+                value={resetInput}
+                onChange={(e) => setResetInput(e.target.value)}
+                placeholder="RESET"
+                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:border-rose-500/60 focus:outline-none"
+              />
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setResetOpen(false); setResetInput(""); }}
+                className="flex-1 rounded-lg border border-slate-700 bg-slate-800 py-2.5 text-sm font-bold text-slate-300 hover:bg-slate-700"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void handleReset()}
+                disabled={resetInput !== "RESET" || resetting}
+                className="flex-1 rounded-lg bg-rose-600 py-2.5 text-sm font-bold text-white hover:bg-rose-500 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {resetting && <Loader2 className="h-4 w-4 animate-spin" />}
+                Reset
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -37,8 +37,15 @@ export interface RegulationResponse {
   hash_value: string;
   status: string;
   created_at: string;
-  relevant?: boolean | null;
+  // Source tracking
+  source?: string | null;           // "FDA_API" | "DOCUMENT_UPLOAD"
+  document_number?: string | null;
+  effective_date?: string | null;
+  summary?: string | null;
+  regulatory_authority?: string | null;
   category?: string | null;
+  // AI verdicts
+  relevant?: boolean | null;
   urgency?: string | null;
   affected_business_areas?: string[] | null;
   rationale?: string | null;
@@ -130,4 +137,20 @@ export interface TaskUpdatePayload {
   department?: string;
   priority?: string;
   status?: string;
+}
+
+export interface DataStats {
+  total_regulations: number;
+  total_documents: number;
+  total_compliance_cases: number;
+  total_knowledge_base_documents: number;
+  total_impact_assessments: number;
+  total_remediation_drafts: number;
+  total_implementation_tasks: number;
+}
+
+export interface ResetResponse {
+  status: string;
+  message: string;
+  deleted: Record<string, number>;
 }

@@ -13,6 +13,7 @@ from app.api.v1.endpoints import (
     exports,
     users,
     ai_status,
+    admin,
 )
 
 api_router = APIRouter()
@@ -30,3 +31,4 @@ api_router.include_router(approvals.router, prefix="/approvals", tags=["Approval
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["Dashboard"])
 api_router.include_router(exports.router, prefix="/exports", tags=["Exports"])
 api_router.include_router(ai_status.router, prefix="/ai-status", tags=["AI Status"])
+api_router.include_router(admin.router, prefix="/admin", tags=["Admin"])

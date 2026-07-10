@@ -11,6 +11,7 @@ import {
   LogOut,
   Menu,
   Scale,
+  Settings,
   X,
   Cpu,
 } from "lucide-react";
@@ -24,6 +25,10 @@ const navigation = [
   { label: "Regulations", href: "/regulations", icon: Scale },
   { label: "Documents", href: "/documents", icon: Files },
   { label: "Tasks", href: "/tasks", icon: ClipboardCheck },
+];
+
+const settingsNavigation = [
+  { label: "Data Management", href: "/settings/data-management", icon: Settings },
 ];
 
 // ---------------------------------------------------------------------------
@@ -230,9 +235,16 @@ function Sidebar({
       </div>
 
       {/* Navigation links */}
-      <nav className="flex-1 px-5 py-6">
-        <div className="space-y-4">
+      <nav className="flex-1 px-5 py-6 flex flex-col gap-6">
+        <div className="space-y-1">
+          <p className="px-4 text-[10px] font-bold uppercase tracking-widest text-slate-600 mb-2">Workspace</p>
           {navigation.map((item) => (
+            <SidebarLink key={item.href} item={item} onNavigate={onNavigate} />
+          ))}
+        </div>
+        <div className="space-y-1">
+          <p className="px-4 text-[10px] font-bold uppercase tracking-widest text-slate-600 mb-2">Settings</p>
+          {settingsNavigation.map((item) => (
             <SidebarLink key={item.href} item={item} onNavigate={onNavigate} />
           ))}
         </div>
