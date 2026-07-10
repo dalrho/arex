@@ -110,12 +110,13 @@ def submit_approval_decision(
             doc.version += 1
             doc.parsed_text = draft.proposed_revision
             
-            # Sync to physical storage
+            # Sync to physical storage: write the new version to a separate text file
+            versioned_file_path = os.path.join("/app/storage", f"{doc.id}_v{doc.version}.txt")
             try:
-                with open(doc.file_path, "w", encoding="utf-8") as f:
+                with open(versioned_file_path, "w", encoding="utf-8") as f:
                     f.write(draft.proposed_revision)
             except OSError:
-                pass
+                versioned_file_path = doc.file_path
 
             # Create document version history entry
             reg = db.query(RegulationUpdate).filter(RegulationUpdate.id == draft.regulation_id).first()
@@ -127,7 +128,7 @@ def submit_approval_decision(
                 document_id=doc.id,
                 version=doc.version,
                 filename=doc.filename,
-                file_path=doc.file_path,
+                file_path=versioned_file_path,
                 parsed_text=draft.proposed_revision,
                 reason_for_revision=reason,
                 created_at=datetime.now(timezone.utc)

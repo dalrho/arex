@@ -1,8 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { Download, Eye, FileText, Loader2, Search, Trash2 } from "lucide-react";
+import { Download, FileText, Loader2, Search, Trash2 } from "lucide-react";
 import DocumentUploader from "@/components/documents/DocumentUploader";
 import DocumentVersionTag from "@/components/documents/DocumentVersionTag";
 import StatusBadge from "@/components/ui/StatusBadge";
@@ -121,14 +120,7 @@ export default function DocumentsPage() {
                       <DocumentVersionTag version={document.version} />
                     </div>
 
-                    <div className="mt-6 grid grid-cols-3 gap-2">
-                      <Link
-                        href={`/documents/${document.id}`}
-                        className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-700 text-xs font-bold text-slate-200 hover:bg-slate-900"
-                      >
-                        <Eye className="h-4 w-4" />
-                        View
-                      </Link>
+                    <div className="mt-6 grid grid-cols-2 gap-2">
                       <button
                         type="button"
                         onClick={() => void handleDownload(document)}
