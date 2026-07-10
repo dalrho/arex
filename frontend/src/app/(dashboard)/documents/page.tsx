@@ -7,12 +7,11 @@ import DocumentUploader from "@/components/documents/DocumentUploader";
 import DocumentVersionTag from "@/components/documents/DocumentVersionTag";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { deleteDocument, downloadDocument, listDocuments } from "@/lib/apiClient";
-import { demoDocuments } from "@/lib/demoData";
 import { formatDateTime } from "@/lib/format";
 import type { DocumentResponse } from "@/types/api";
 
 export default function DocumentsPage() {
-  const [documents, setDocuments] = useState<DocumentResponse[]>(demoDocuments);
+  const [documents, setDocuments] = useState<DocumentResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -21,11 +20,10 @@ export default function DocumentsPage() {
     setLoading(true);
     try {
       const rows = await listDocuments();
-      const nextRows = rows.length > 0 ? rows : demoDocuments;
-      nextRows.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-      setDocuments(nextRows);
+      rows.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      setDocuments(rows);
     } catch {
-      setDocuments(demoDocuments);
+      setDocuments([]);
     } finally {
       setLoading(false);
     }
