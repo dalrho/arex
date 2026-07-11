@@ -38,5 +38,17 @@ class TaskResponse(BaseModel):
             return f"{settings.JIRA_URL.rstrip('/')}/browse/{self.jira_issue_key}"
         return None
 
+    @computed_field
+    @property
+    def provider(self) -> str:
+        from app.core.config import settings
+        return settings.active_provider
+
+    @computed_field
+    @property
+    def model(self) -> str:
+        from app.core.config import settings
+        return settings.active_model_formatted
+
     class Config:
         from_attributes = True
