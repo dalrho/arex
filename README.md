@@ -388,6 +388,12 @@ If you want to run the code natively on your local machine:
    npm run dev
    ```
 
+### Demo Credentials
+
+| Username | Password | Role |
+|---|---|---|
+| qa@biopharma.com | password | QA |
+
 ### Supported AI Providers & Models
 
 * **Google Gemini (Developer Mode)**:
