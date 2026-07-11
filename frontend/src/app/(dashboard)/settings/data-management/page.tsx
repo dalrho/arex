@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, BarChart3, Database, Download, Loader2, RefreshCw, Trash2, Upload } from "lucide-react";
+import { AlertTriangle, BarChart3, Loader2, RefreshCw, Trash2 } from "lucide-react";
 import { getAdminStats, resetApplicationData } from "@/lib/apiClient";
 import type { DataStats } from "@/types/api";
 
@@ -52,7 +52,7 @@ export default function DataManagementPage() {
           <span className="text-[10px] font-extrabold uppercase tracking-wider text-blue-400">Settings</span>
           <h1 className="mt-1 text-2xl font-extrabold text-white">Data Management</h1>
           <p className="mt-1 text-sm text-slate-400">
-            View your regulatory database statistics, export or import data, and reset the application to a clean state.
+            View your regulatory database statistics and reset the application to a clean state.
           </p>
         </div>
 
@@ -109,32 +109,6 @@ export default function DataManagementPage() {
           ) : null}
         </section>
 
-        {/* Export / Import */}
-        <section className="rounded-2xl border border-slate-700 bg-[#081024] p-6 space-y-4">
-          <div className="flex items-center gap-2">
-            <Database className="h-5 w-5 text-blue-400" />
-            <h2 className="text-sm font-extrabold uppercase tracking-wider text-slate-200">Data Transfer</h2>
-          </div>
-          <p className="text-xs text-slate-500">Export or import your regulatory database for backup or migration purposes.</p>
-          <div className="flex flex-wrap gap-3">
-            <button
-              disabled
-              className="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/60 px-4 py-2 text-sm font-semibold text-slate-500 cursor-not-allowed"
-              title="Coming soon"
-            >
-              <Download className="h-4 w-4" /> Export Data
-              <span className="ml-1 text-[10px] font-bold text-slate-600 bg-slate-800 px-1.5 py-0.5 rounded">Soon</span>
-            </button>
-            <button
-              disabled
-              className="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/60 px-4 py-2 text-sm font-semibold text-slate-500 cursor-not-allowed"
-              title="Coming soon"
-            >
-              <Upload className="h-4 w-4" /> Import Data
-              <span className="ml-1 text-[10px] font-bold text-slate-600 bg-slate-800 px-1.5 py-0.5 rounded">Soon</span>
-            </button>
-          </div>
-        </section>
 
         {/* Danger Zone */}
         <section className="rounded-2xl border border-rose-500/30 bg-rose-500/5 p-6 space-y-5">

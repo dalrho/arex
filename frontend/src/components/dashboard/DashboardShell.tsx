@@ -13,10 +13,9 @@ import {
   Scale,
   Settings,
   X,
-  Cpu,
 } from "lucide-react";
 import clsx from "clsx";
-import { clearSession, getCurrentUser, getAiStatus, type AIStatusResponse } from "@/lib/apiClient";
+import { clearSession, getCurrentUser } from "@/lib/apiClient";
 import type { AuthUser } from "@/types/api";
 
 const BRAND_LOGO_SRC = "/brand/arex-logo.png";
@@ -31,59 +30,6 @@ const settingsNavigation = [
   { label: "Data Management", href: "/settings/data-management", icon: Settings },
 ];
 
-// ---------------------------------------------------------------------------
-// AI Mode Indicator — rendered inside the sidebar below the logo
-// ---------------------------------------------------------------------------
-function AIModePanel({ status }: { status: AIStatusResponse | null | "loading" }) {
-  // Loading skeleton
-  if (status === "loading") {
-    return (
-      <div className="mx-4 mb-1 mt-1 flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-900/50 px-3 py-2">
-        <div className="h-2 w-2 animate-pulse rounded-full bg-slate-600" />
-        <div className="h-3 w-16 animate-pulse rounded bg-slate-700" />
-      </div>
-    );
-  }
-
-  const isOnline = status?.mode === "online";
-  const modelShort = status?.model
-    ? status.model.replace("models/", "").replace(/-/g, " ")
-    : null;
-
-  if (isOnline) {
-    return (
-      <div
-        title={`Live AI | ${status?.model} | Embeddings: ${status?.embedding_model}`}
-        className="mx-4 mb-1 mt-1 overflow-hidden rounded-lg border border-emerald-500/20 bg-gradient-to-r from-emerald-950/60 to-slate-900/80 px-3 py-2 backdrop-blur-sm"
-      >
-        <div className="flex items-center justify-between">
-          {/* Status dot + label */}
-          <div className="flex items-center gap-2">
-            {/* Animated pulse ring */}
-            <span className="relative flex h-2.5 w-2.5 flex-shrink-0">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
-              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
-            </span>
-            <span className="text-xs font-bold tracking-wide text-emerald-400">
-              Online AI
-            </span>
-          </div>
-          {/* Cpu icon */}
-          <Cpu className="h-3.5 w-3.5 text-emerald-600" />
-        </div>
-        {/* Model name */}
-        {modelShort && (
-          <p className="mt-1 truncate text-[10px] capitalize text-emerald-600/80">
-            {modelShort}
-          </p>
-        )}
-      </div>
-    );
-  }
-
-  // Offline — render nothing
-  return null;
-}
 
 
 // ---------------------------------------------------------------------------
@@ -91,35 +37,12 @@ function AIModePanel({ status }: { status: AIStatusResponse | null | "loading" }
 // ---------------------------------------------------------------------------
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [aiStatus, setAiStatus] = useState<AIStatusResponse | null | "loading">("loading");
-
-  useEffect(() => {
-    const fetchStatus = async () => {
-      try {
-        const status = await getAiStatus();
-        setAiStatus(status);
-      } catch {
-        setAiStatus({
-          mode: "offline",
-          model: null,
-          embedding_model: null,
-          gemini_key_configured: false,
-          reason: "Backend unreachable",
-        });
-      }
-    };
-
-    fetchStatus();
-    const interval = setInterval(fetchStatus, 60_000);
-    return () => clearInterval(interval);
-  }, []);
 
   return (
     <div className="h-screen overflow-hidden bg-[#020613] text-slate-100">
       <div className="flex h-full min-w-0">
         <Sidebar
           onNavigate={() => setMobileOpen(false)}
-          aiStatus={aiStatus}
         />
 
         {mobileOpen && (
@@ -134,7 +57,6 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
               <Sidebar
                 onNavigate={() => setMobileOpen(false)}
                 mobile
-                aiStatus={aiStatus}
               />
               <button
                 type="button"
@@ -170,11 +92,9 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 function Sidebar({
   onNavigate,
   mobile = false,
-  aiStatus,
 }: {
   onNavigate: () => void;
   mobile?: boolean;
-  aiStatus: AIStatusResponse | null | "loading";
 }) {
   const router = useRouter();
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -219,10 +139,7 @@ function Sidebar({
         />
       </Link>
 
-      {/* AI Mode indicator — sits just below the logo */}
-      <div className="border-b border-slate-800/60 pb-3 pt-3">
-        <AIModePanel status={aiStatus} />
-      </div>
+
 
       {/* Navigation links */}
       <nav className="flex-1 px-5 py-6 flex flex-col gap-6">
