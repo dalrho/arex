@@ -33,6 +33,119 @@ function hostFor(url: string): string {
   }
 }
 
+function CleanContentDisplay({ text }: { text?: string | null }) {
+  if (!text) {
+    return (
+      <p className="mt-6 max-w-4xl text-base leading-7 text-slate-300">
+        The selected update affects validated QMS controls.
+      </p>
+    );
+  }
+
+  // If GPO content/metadata is not present, render as standard paragraph (like AI Rationale)
+  if (!text.includes("Federal Register") && !text.includes("CFR Part")) {
+    return <p className="mt-6 max-w-4xl text-base leading-7 text-slate-300 whitespace-pre-wrap">{text}</p>;
+  }
+
+  let metaBlock = "";
+  let cleanText = text;
+
+  // Extract Federal Register metadata block if present
+  const frRegex = /^\[Federal Register[^\]]+\][^]*?\[FR Doc[^\]]+\]/;
+  const match = cleanText.match(frRegex);
+  if (match) {
+    metaBlock = match[0];
+    cleanText = cleanText.substring(match[0].length).trim();
+  }
+
+  // Clean lines of separator noise: ============ or --------------
+  cleanText = cleanText.replace(/^[=\-\s_]{4,}\s*$/gm, "");
+  cleanText = cleanText.replace(/^[=\-\s_]{4,}/gm, "");
+  cleanText = cleanText.replace(/[=\-\s_]{4,}$/gm, "");
+
+  // Split by double newlines for paragraphs
+  const paragraphs = cleanText.split(/\n\s*\n+/);
+
+  return (
+    <div className="mt-6 space-y-6 text-sm text-slate-300 leading-7 max-w-4xl">
+      {metaBlock && (
+        <div className="rounded-lg bg-[#040817] p-4 border border-slate-800 text-[11px] text-slate-400 space-y-2 font-mono">
+          <p className="font-extrabold text-blue-400 uppercase tracking-wider text-[9px]">
+            Federal Register Publication Info
+          </p>
+          <p className="leading-relaxed">
+            {metaBlock
+              .replace(/[\[\]]/g, " ")
+              .replace(/\s+/g, " ")
+              .trim()}
+          </p>
+        </div>
+      )}
+
+      <div className="space-y-4">
+        {paragraphs.map((p, idx) => {
+          const trimmed = p.trim();
+          if (!trimmed) return null;
+
+          // Check if this is a main department / agency header
+          const isAllCapsHeader =
+            trimmed.toUpperCase() === trimmed &&
+            trimmed.length < 150 &&
+            (trimmed.includes("DEPARTMENT OF") ||
+              trimmed.includes("ADMINISTRATION") ||
+              trimmed.includes("COMMISSION"));
+
+          if (isAllCapsHeader && !trimmed.includes(":")) {
+            return (
+              <h4
+                key={idx}
+                className="text-xs font-extrabold text-blue-400 tracking-widest uppercase border-l-2 border-blue-500 pl-3 mt-8 mb-3"
+              >
+                {trimmed}
+              </h4>
+            );
+          }
+
+          // Highlight common federal document sections
+          const sectionPrefixes = [
+            "SUMMARY:",
+            "AGENCY:",
+            "ACTION:",
+            "DATES:",
+            "ADDRESSES:",
+            "FOR FURTHER INFORMATION CONTACT:",
+            "SUPPLEMENTARY INFORMATION:",
+            "BACKGROUND:",
+          ];
+
+          for (const prefix of sectionPrefixes) {
+            if (trimmed.toUpperCase().startsWith(prefix)) {
+              const content = trimmed.substring(prefix.length).trim();
+              return (
+                <div key={idx} className="mt-4 space-y-1">
+                  <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider block">
+                    {prefix.replace(":", "")}
+                  </span>
+                  <p className="text-slate-300 leading-relaxed pl-4 border-l border-slate-800/80">
+                    {content}
+                  </p>
+                </div>
+              );
+            }
+          }
+
+          // Default paragraph
+          return (
+            <p key={idx} className="whitespace-pre-wrap leading-relaxed">
+              {trimmed}
+            </p>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function waitForAssessmentAnimation(): Promise<void> {
   return new Promise((resolve) => {
     window.setTimeout(resolve, MIN_ASSESSMENT_ANIMATION_MS);
@@ -444,10 +557,10 @@ function RegulationsPage() {
                     </p>
                   </div>
                   <div className="border-t border-slate-800 pt-4 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0">
-                    <div className="flex items-start gap-3">
+                    <div className="flex items-center gap-3">
                       <span
                         className={clsx(
-                          "mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border",
+                          "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border",
                           selectedIsClosed || selectedStatusComplete
                             ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
                             : "border-amber-500/30 bg-amber-500/10 text-amber-300"
@@ -1027,9 +1140,8 @@ function AssessmentSummary({
           <p className="mt-1 text-4xl font-extrabold text-red-300">{Math.round(impact.risk_score)}</p>
         </div>
       </div>
-      <p className="mt-6 max-w-4xl text-base leading-7 text-slate-300">
-        {regulation?.rationale || regulation?.raw_content || "The selected update affects validated QMS controls."}
-      </p>
+      <CleanContentDisplay text={regulation?.rationale || regulation?.raw_content} />
+
       <div className="mt-6 flex flex-wrap gap-2">
         {impact.affected_departments.map((department) => (
           <StatusBadge key={department} label={department} tone="blue" />

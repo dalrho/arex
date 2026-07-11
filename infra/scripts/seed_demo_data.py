@@ -25,6 +25,7 @@ from app.models.remediation_draft import RemediationDraft
 from app.models.implementation_task import ImplementationTask
 from app.models.approval_record import ApprovalRecord
 
+
 from app.services.embeddings.embedding_service import embedding_service
 from app.services.vector_db.qdrant_client import vector_db_client
 
@@ -245,130 +246,11 @@ def seed_database():
         db.commit()
         logger.info("Seeded documents and indexed in Qdrant successfully.")
 
-        # 5. Seed a new Regulation Update
-        reg_id = uuid.UUID("a0f2c416-24e0-4c12-a72e-07a829e1eb1c")
-        reg_text = (
-            "The Food and Drug Administration (FDA) is amending its regulations regarding electronic records "
-            "and electronic signatures (21 CFR Part 11). This amendment establishes that all electronic systems "
-            "used to manage clinical trial data or quality management records must implement mandatory "
-            "Multi-Factor Authentication (MFA) for access control. Simple password-only authentication is no "
-            "longer considered sufficient. Furthermore, session idle timeouts must be enforced at a maximum limit "
-            "of 15 minutes. Failure to comply with these rules by December 31, 2026, will result in warning letters "
-            "and possible suspension of product approvals."
-        )
-        
-        reg_hash = hashlib.sha256(reg_text.encode("utf-8")).hexdigest()
-        reg_update = RegulationUpdate(
-            id=reg_id,
-            source_url="https://www.federalregister.gov/documents/2026/07/05/21-cfr-part-11-mfa-rules",
-            title="FDA Mandatory Multi-Factor Authentication and Session Idle Timeout Requirements (2026)",
-            published_date=datetime(2026, 7, 5, tzinfo=timezone.utc),
-            raw_content=reg_text,
-            parsed_sections={
-                "section_3.1": "Access Control Systems must implement Multi-Factor Authentication (MFA).",
-                "section_3.2": "Session idle timeouts must not exceed 15 minutes of inactivity."
-            },
-            hash_value=reg_hash,
-            status="classified",
-            created_at=datetime.now(timezone.utc)
-        )
-        db.add(reg_update)
-        db.commit()
-        logger.info("Seeded regulation: Part 11 MFA & Session Timeout Amendment")
-
-        # Find the SOP-101 document model to map remediation draft
-        sop_101_model = [d for d in doc_models if d.filename == "SOP-101.txt"][0]
-
-        # 6. Seed Impact Assessment
-        impact = ImpactAssessment(
-            id=uuid.uuid4(),
-            regulation_id=reg_id,
-            organization_id=org_id,
-            risk_score=0.85,
-            impact_level="High",
-            rationale=(
-                "The new FDA amendment mandates Multi-Factor Authentication (MFA) and reduces the permissible idle "
-                "timeout limit to 15 minutes. Our current SOP-101 (Access Control) does not require MFA and permits "
-                "a 30-minute idle session timeout. This constitutes a high-priority compliance gap requiring immediate revision."
-            ),
-            affected_departments=["IT Department", "Quality Assurance"],
-            affected_documents=[
-                {
-                    "document_id": str(sop_101_model.id),
-                    "document_name": "SOP-101.txt",
-                    "document_type": "SOP",
-                    "affected_sections": "3.2 Session Timeout: Computer terminals and software applications must automatically log out a user or lock the display terminal after 30 minutes of continuous keyboard or mouse inactivity.",
-                    "explanation": "Our current SOP-101 permits a 30-minute idle session timeout and does not specify MFA controls, creating a direct compliance gap.",
-                    "confidence_score": 95.0
-                }
-            ],
-            status="pending",
-            created_at=datetime.now(timezone.utc)
-        )
-        db.add(impact)
-
-
-        # 7. Seed Remediation Draft
-        proposed_remediation_text = SOP_101_TEXT.replace(
-            "3.1 Password Complexity: User passwords must be a minimum of 8 characters, containing at least one uppercase letter, one lowercase letter, one numeric digit, and one special character.",
-            "3.1 Password Complexity: User passwords must be a minimum of 8 characters, containing at least one uppercase letter, one lowercase letter, one numeric digit, and one special character. Additionally, Multi-Factor Authentication (MFA) must be enforced for all users."
-        ).replace(
-            "3.2 Session Timeout: Computer terminals and software applications must automatically log out a user or lock the display terminal after 30 minutes of continuous keyboard or mouse inactivity.",
-            "3.2 Session Timeout: Computer terminals and software applications must automatically log out a user or lock the display terminal after 15 minutes of continuous keyboard or mouse inactivity."
-        )
-
-        remediation = RemediationDraft(
-            id=uuid.uuid4(),
-            sop_id=sop_101_model.id,
-            regulation_id=reg_id,
-            proposed_revision=proposed_remediation_text,
-            current_content=SOP_101_TEXT,
-            diff_content={
-                "added": [
-                    "Additionally, Multi-Factor Authentication (MFA) must be enforced for all users.",
-                    "after 15 minutes of continuous keyboard or mouse inactivity (reduced from 30 minutes)."
-                ],
-                "removed": [
-                    "after 30 minutes of continuous keyboard or mouse inactivity."
-                ]
-            },
-            explanation="Updates password policy to mandate MFA and reduces idle session timeouts to 15 minutes to satisfy Part 11 requirements.",
-            status="Under Review",
-            reviewer_id=None,
-            reviewed_at=None,
-            created_at=datetime.now(timezone.utc)
-        )
-        db.add(remediation)
-        db.flush()
-
-        # 8. Seed Implementation Tasks
-        task1 = ImplementationTask(
-            id=uuid.uuid4(),
-            regulation_id=reg_id,
-            remediation_draft_id=remediation.id,
-            title="Implement Multi-Factor Authentication (MFA) in Active Directory",
-            description="Configure active directory integration and mandate MFA enrollment for all users accessing GxP validated servers.",
-            department="IT",
-            priority="High",
-            status="TODO",
-            created_at=datetime.now(timezone.utc)
-        )
-        task2 = ImplementationTask(
-            id=uuid.uuid4(),
-            regulation_id=reg_id,
-            remediation_draft_id=remediation.id,
-            title="Configure Session Idle Timeout to 15 Minutes on Validation Systems",
-            description="Update system group policies and web-app timeout controls to terminate user login sessions after 15 minutes of inactivity.",
-            department="Engineering",
-            priority="Medium",
-            status="TODO",
-            created_at=datetime.now(timezone.utc)
-        )
-        db.add(task1)
-        db.add(task2)
-        
         db.commit()
         logger.info("Successfully seeded all database tables with demo GxP data.")
+        logger.info("No regulations seeded — click 'Fetch from FDA' in the UI to load real live FDA regulations.")
+
+
 
     except Exception as e:
         db.rollback()

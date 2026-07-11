@@ -303,6 +303,17 @@ export default function RemediationReviewPage({ params }: { params: { id: string
   const selectedRegulationId = regulation?.id ?? null;
   const allApproved = drafts.length > 0 && drafts.every((d) => d.status === "APPROVED");
 
+  if (assessing) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-[#020613] p-10">
+        <AssessmentLoadingView 
+          regulationTitle={regulation?.title} 
+          documents={relatedDocs.length > 0 ? relatedDocs : undefined}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-full min-w-0 bg-[#020613]">
       <div className="min-w-0 flex-1 overflow-y-auto">
@@ -368,12 +379,7 @@ export default function RemediationReviewPage({ params }: { params: { id: string
               </div>
             )}
 
-            {assessing ? (
-              <AssessmentLoadingView 
-                regulationTitle={regulation?.title} 
-                documents={relatedDocs.length > 0 ? relatedDocs : undefined}
-              />
-            ) : loading ? (
+            {loading ? (
               <div className="mt-8 flex h-40 items-center justify-center gap-3 rounded-lg border border-slate-700 bg-[#081024] text-slate-400">
                 <Loader2 className="h-5 w-5 animate-spin" />
                 Loading remediation drafts...

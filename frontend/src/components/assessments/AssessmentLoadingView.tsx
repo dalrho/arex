@@ -83,7 +83,7 @@ export default function AssessmentLoadingView({
           allDocuments={allDocs}
           affectedDocuments={affectedDocs}
           regulationTitle={regulationTitle}
-          onProgress={setAffectedCount}
+          onProgress={(n) => setAffectedCount((prev) => Math.max(prev, n))}
         />
       </div>
     </section>

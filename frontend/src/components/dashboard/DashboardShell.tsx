@@ -81,20 +81,10 @@ function AIModePanel({ status }: { status: AIStatusResponse | null | "loading" }
     );
   }
 
-  // Offline
-  return (
-    <div
-      title={status?.reason ?? "Offline Mode — mock responses active"}
-      className="mx-4 mb-1 mt-1 rounded-lg border border-slate-700/60 bg-slate-900/50 px-3 py-2"
-    >
-      <div className="flex items-center gap-2">
-        <span className="h-2 w-2 flex-shrink-0 rounded-full bg-slate-500" />
-        <span className="text-xs font-medium text-slate-500">Offline Mode</span>
-      </div>
-      <p className="mt-0.5 text-[10px] text-slate-600">Mock responses active</p>
-    </div>
-  );
+  // Offline — render nothing
+  return null;
 }
+
 
 // ---------------------------------------------------------------------------
 // DashboardShell
