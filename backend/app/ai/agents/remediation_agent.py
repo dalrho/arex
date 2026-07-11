@@ -57,21 +57,135 @@ def run_remediation_agent(state: Dict[str, Any]) -> Dict[str, Any]:
         logger.error("Regulation ID or Organization ID missing in state.")
         return {"remediation_draft_ids": []}
         
-    if not matched_doc_ids:
-        logger.info("No matched document IDs found. Skipping remediation generation.")
-        return {"remediation_draft_ids": []}
-        
     db = SessionLocal()
     draft_ids = []
     
     try:
+        from app.core.exceptions import LLMConfigurationError
+        from datetime import datetime, timezone
+        import docx
+        
         regulation = db.query(RegulationUpdate).filter(
             RegulationUpdate.id == uuid.UUID(regulation_id_str)
         ).first()
         if not regulation:
             logger.error("Regulation not found in database.")
             return {"remediation_draft_ids": []}
+
+        if not matched_doc_ids:
+            logger.info("No matched document IDs found. Generating a Proposed New SOP from scratch...")
+            safe_title = "".join(c for c in regulation.title if c.isalnum() or c in (" ", "-", "_")).strip()
+            filename = f"Proposed New SOP - {safe_title}.docx"
             
+            # Check if a draft pointing to a Proposed New SOP for this regulation already exists
+            existing_draft = db.query(RemediationDraft).join(Document, RemediationDraft.sop_id == Document.id).filter(
+                RemediationDraft.regulation_id == regulation.id,
+                Document.filename.like("Proposed New SOP - %")
+            ).first()
+            
+            if existing_draft:
+                logger.info(f"Proposed new SOP draft already exists for regulation {regulation.id}. Re-generating draft content.")
+                new_doc = db.query(Document).filter(Document.id == existing_draft.sop_id).first()
+            else:
+                unique_file_id = uuid.uuid4()
+                file_path = f"/app/storage/{unique_file_id}.docx"
+                
+                doc_obj = docx.Document()
+                doc_obj.add_paragraph("Proposed New SOP Placeholder")
+                os.makedirs(os.path.dirname(file_path), exist_ok=True)
+                doc_obj.save(file_path)
+                
+                new_doc = Document(
+                    id=unique_file_id,
+                    organization_id=uuid.UUID(organization_id_str),
+                    filename=filename,
+                    file_path=file_path,
+                    version=1,
+                    parsed_text="[Proposed New SOP Placeholder]",
+                    created_at=datetime.now(timezone.utc)
+                )
+                db.add(new_doc)
+                db.commit()
+                db.refresh(new_doc)
+                
+            system_prompt = (
+                "You are an expert Compliance Officer and GxP technical writer. "
+                "Write a complete, professional, standalone Standard Operating Procedure (SOP) "
+                "from scratch in response to the provided FDA regulation update. "
+                "The document MUST be GxP-compliant, structured, and complete. "
+                "Do not include snippets, comments, or summaries — output the full, complete document text."
+            )
+            
+            user_prompt = (
+                f"Write a complete, compliance SOP from scratch for: {filename}\n\n"
+                f"FDA Regulation Update:\n"
+                f"Title: {regulation.title}\n"
+                f"Content Summary:\n{regulation.summary or regulation.raw_content}\n\n"
+                f"The text should have standard sections: 1.0 Purpose, 2.0 Scope, 3.0 Responsibilities, 4.0 Procedure, etc."
+            )
+            
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ]
+            
+            logger.info("Invoking LLM to generate Proposed New SOP from scratch...")
+            try:
+                result = llm_client.get_completion(
+                    messages=messages,
+                    response_model=RemediationAgentOutput,
+                    temperature=0.0
+                )
+            except Exception as llm_err:
+                logger.error(f"LLM call failed for new SOP generation: {llm_err}. Using stub fallback.")
+                result = RemediationAgentOutput(
+                    proposed_text=(
+                        f"1.0 Purpose\n"
+                        f"This SOP establishes procedures to comply with: {regulation.title}.\n\n"
+                        f"2.0 Scope\n"
+                        f"Applies to all personnel involved in relevant operations.\n\n"
+                        f"3.0 Responsibilities\n"
+                        f"Quality Assurance is responsible for implementation and training.\n\n"
+                        f"4.0 Procedure\n"
+                        f"4.1 Review the requirements of {regulation.title}.\n"
+                        f"4.2 Update affected processes to align with regulation requirements.\n"
+                        f"4.3 Document all changes and obtain QA approval.\n\n"
+                        f"5.0 References\n"
+                        f"- {regulation.title}\n\n"
+                        f"[NOTE: This is an AI-generated stub. The LLM API was unavailable (quota exceeded). "
+                        f"Please edit this draft with the full SOP content.]"
+                    ),
+                    citations=[regulation.title],
+                    rationale=f"Stub draft generated due to LLM API unavailability. Manual review required."
+                )
+            
+            if existing_draft:
+                existing_draft.proposed_revision = result.proposed_text
+                existing_draft.diff_content = {"added": result.proposed_text.splitlines(), "removed": []}
+                existing_draft.explanation = result.rationale
+                existing_draft.status = "Draft"
+                db.commit()
+                db.refresh(existing_draft)
+                draft_ids.append(str(existing_draft.id))
+            else:
+                new_draft = RemediationDraft(
+                    id=uuid.uuid4(),
+                    sop_id=new_doc.id,
+                    regulation_id=regulation.id,
+                    proposed_revision=result.proposed_text,
+                    current_content="",
+                    diff_content={"added": result.proposed_text.splitlines(), "removed": []},
+                    explanation=result.rationale,
+                    status="Draft"
+                )
+                db.add(new_draft)
+                db.commit()
+                db.refresh(new_draft)
+                draft_ids.append(str(new_draft.id))
+                
+            logger.info(f"Remediation Agent successfully generated proposed new SOP draft: {draft_ids[0]}")
+            return {"remediation_draft_ids": draft_ids}
+
         # Read system prompt
         current_dir = os.path.dirname(os.path.abspath(__file__))
         prompt_path = os.path.join(current_dir, "../prompts/remediation.md")
@@ -179,7 +293,19 @@ def run_remediation_agent(state: Dict[str, Any]) -> Dict[str, Any]:
                 except Exception as ex:
                     logger.error(f"Error on remediation generation attempt {attempt}: {ex}")
                     if attempt == attempts:
-                        raise ex
+                        logger.warning(f"All {attempts} LLM attempts failed for '{doc.filename}'. Using stub fallback.")
+                        result = RemediationAgentOutput(
+                            proposed_text=(
+                                f"{doc.parsed_text}\n\n"
+                                f"--- COMPLIANCE UPDATE REQUIRED ---\n"
+                                f"This SOP requires revision to comply with: {regulation.title}.\n"
+                                f"[NOTE: This is an AI-generated stub. The LLM API was unavailable (quota exceeded). "
+                                f"Please edit this draft with the required changes.]"
+                            ),
+                            citations=[regulation.title],
+                            rationale=f"Stub draft generated due to LLM API unavailability. Manual review required for compliance with {regulation.title}."
+                        )
+                        break
 
             if not result:
                 logger.error(f"Failed to generate valid draft for document {doc_id}")
@@ -222,6 +348,10 @@ def run_remediation_agent(state: Dict[str, Any]) -> Dict[str, Any]:
         logger.info(f"Remediation Agent successfully generated {len(draft_ids)} drafts.")
         return {"remediation_draft_ids": draft_ids}
         
+    except LLMConfigurationError:
+        logger.error("Remediation Agent failed due to LLM configuration error.")
+        db.rollback()
+        raise
     except Exception as e:
         logger.error(f"Remediation Agent failed: {e}")
         db.rollback()

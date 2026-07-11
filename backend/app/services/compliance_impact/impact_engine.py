@@ -49,7 +49,8 @@ def assess_compliance_impact(
         db.commit()
 
     # 2. Get embeddings and query Qdrant
-    query_vector = embedding_service.get_embedding(regulation.raw_content)
+    query_text = regulation.summary if regulation.summary and regulation.summary.strip() else regulation.raw_content
+    query_vector = embedding_service.get_embedding(query_text)
     # Search for matching document chunks
     matched_chunks = vector_db_client.search_chunks(
         query_vector=query_vector,
@@ -126,11 +127,15 @@ def assess_compliance_impact(
         "requires modification."
     )
 
+    regulation_content = regulation.summary if regulation.summary and regulation.summary.strip() else regulation.raw_content
+    if len(regulation_content) > 12000:
+        regulation_content = regulation_content[:12000] + "\n... [Content Truncated for Token Optimization] ..."
+
     user_prompt = (
         f"NEW REGULATORY UPDATE:\n"
         f"Title: {regulation.title}\n"
         f"Published Date: {regulation.published_date}\n"
-        f"Content:\n{regulation.raw_content}\n\n"
+        f"Content:\n{regulation_content}\n\n"
         f"COMPANY SOP CONTEXT (RELEVANT SECTIONS):\n"
         f"{sop_context}\n\n"
         f"Analyze the regulation update against our SOP context and generate the structured compliance impact assessment."
@@ -141,6 +146,7 @@ def assess_compliance_impact(
         {"role": "user", "content": user_prompt}
     ]
 
+    from app.core.exceptions import LLMConfigurationError
     try:
         logger.info(f"Invoking LLM for compliance impact assessment on '{regulation.title}'...")
         llm_response = llm_client.get_completion(
@@ -148,6 +154,8 @@ def assess_compliance_impact(
             response_model=ImpactAssessmentLLMOutput,
             temperature=0.0
         )
+    except LLMConfigurationError:
+        raise
     except Exception as llm_err:
         logger.error(f"LLM call failed for impact assessment: {llm_err}. Using baseline fallback.")
         # Minimal fallback in case of API failure
@@ -244,4 +252,45 @@ def assess_compliance_impact(
     assessment.matched_document_ids = [uuid.UUID(d["document_id"]) for d in affected_docs_list]
 
     return assessment
+
+
+from typing import List, Dict, Any
+
+def get_matched_documents(regulation_id: uuid.UUID, organization_id: uuid.UUID, db: Session) -> List[Dict[str, Any]]:
+    """
+    Fast pre-scan of matched documents using vector similarity search.
+    """
+    regulation = db.query(RegulationUpdate).filter(RegulationUpdate.id == regulation_id).first()
+    if not regulation:
+        return []
+
+    from app.models.document import Document
+    from app.core.exceptions import LLMConfigurationError
+
+    query_text = regulation.summary if regulation.summary and regulation.summary.strip() else regulation.raw_content
+    try:
+        query_vector = embedding_service.get_embedding(query_text)
+        matched_chunks = vector_db_client.search_chunks(
+            query_vector=query_vector,
+            organization_id=organization_id,
+            limit=20
+        )
+    except LLMConfigurationError:
+        raise
+    except Exception as e:
+        logger.error(f"Error querying matched documents for pre_scan: {e}")
+        return []
+
+    unique_docs = {}
+    for chunk in matched_chunks:
+        score = chunk.get("score", 0.0)
+        doc_id_str = chunk.get("document_id")
+        if doc_id_str and score >= 0.75:
+            doc_id = uuid.UUID(doc_id_str)
+            if doc_id not in unique_docs:
+                doc_obj = db.query(Document).filter(Document.id == doc_id).first()
+                if doc_obj:
+                    unique_docs[doc_id] = doc_obj.filename
+
+    return [{"id": str(d_id), "filename": fname} for d_id, fname in unique_docs.items()]
 

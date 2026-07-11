@@ -178,19 +178,16 @@ def test_llm_client_offline_completion(mock_settings):
     mock_settings.is_online_mode = False
 
     from app.api.v1.schemas.regulation import RegulatoryIntelligenceOutput
+    from app.core.exceptions import LLMConfigurationError
 
     client = LLMClient()
 
     # Verify offline mode check returns True
     assert client.is_offline_mode() is True
 
-    result = client.get_completion(
-        messages=[{"role": "user", "content": "hello"}],
-        response_model=RegulatoryIntelligenceOutput,
-        temperature=0.0
-    )
-
-    # In offline mode we should get mock response
-    assert isinstance(result, RegulatoryIntelligenceOutput)
-    assert result.relevant is not None
-    assert result.rationale is not None
+    with pytest.raises(LLMConfigurationError):
+        client.get_completion(
+            messages=[{"role": "user", "content": "hello"}],
+            response_model=RegulatoryIntelligenceOutput,
+            temperature=0.0
+        )

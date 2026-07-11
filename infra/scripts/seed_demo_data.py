@@ -110,6 +110,121 @@ Applies to all standard operating procedures, design histories, and manufacturin
 3.3 File Archival: Archived files must be stored in read-only folders with modification rights disabled to prevent deletion or overwriting.
 """
 
+SOP_105_TEXT = """
+STANDARD OPERATING PROCEDURE: SOP-105
+TITLE: CORRECTIVE AND PREVENTIVE ACTION (CAPA) WORKFLOW
+VERSION: 1
+
+1.0 PURPOSE
+This procedure defines the requirements for establishing, documenting, and executing the Corrective and Preventive Action (CAPA) program to eliminate causes of actual or potential nonconformities.
+
+2.0 SCOPE
+Applies to all systemic deviations, out-of-specification results, audit findings, customer complaints, and manufacturing failures requiring formal investigation.
+
+3.0 CAPA PROCEDURE AND PROCESS
+3.1 Investigation: A formal investigation must be initiated within five (5) business days of identifying a systemic issue. Root cause analysis must be conducted using structured tools such as the "5 Whys" or Ishikawa diagrams.
+3.2 CAPA Plan Design: A detailed CAPA plan must be created, listing corrective actions to resolve the immediate issue and preventive actions to prevent recurrence. Each action must have an assigned owner and target completion date.
+3.3 Review and Pre-Approval: The CAPA plan must be reviewed and pre-approved by the QA Manager before implementation.
+3.4 Effectiveness Check: All CAPAs must undergo an effectiveness verification review between thirty (30) and ninety (90) days after implementation. The CAPA is considered closed only when QA confirms the actions have effectively prevented recurrence.
+"""
+
+SOP_106_TEXT = """
+STANDARD OPERATING PROCEDURE: SOP-106
+TITLE: CHANGE CONTROL MANAGEMENT PROTOCOL
+VERSION: 1
+
+1.0 PURPOSE
+This SOP establishes the quality system guidelines to ensure that changes to facilities, equipment, utilities, processes, and validated computer systems are properly evaluated, approved, and documented prior to implementation.
+
+2.0 SCOPE
+Applies to any change that has the potential to impact product quality, safety, identity, strength, purity, or the validated state of manufacturing computer systems.
+
+3.0 CHANGE CONTROL CLASSIFICATION AND FLOW
+3.1 Classification: Change requests must be classified based on risk:
+  - Major Change: High risk, potentially affecting safety, purity, or efficacy. Requires full validation and regulatory pre-approval.
+  - Minor Change: Low risk, minimal impact on system performance or product quality. Requires documentation and QA approval.
+  - Critical/Emergency Change: Immediate action required to prevent loss of product or safety hazard. Requires verbal authorization followed by formal CC submission within 24 hours.
+3.2 Pre-Approval: No change (except emergency actions) may be executed without prior signature approval from the Change Control Board (CCB) and QA Manager.
+3.3 Implementation and Testing: Changes must be executed in accordance with the approved plan. Post-change validation testing must be performed to confirm system integrity.
+3.4 Final QA Closure: QA must review all post-change testing data, confirm training requirements are met, and formally close the change control request.
+"""
+
+SOP_107_TEXT = """
+STANDARD OPERATING PROCEDURE: SOP-107
+TITLE: COMPUTER SYSTEM VALIDATION (CSV) LIFECYCLE
+VERSION: 1
+
+1.0 PURPOSE
+Establishes the validation framework for computer systems, databases, and automated equipment to guarantee data integrity, traceability, and compliance with 21 CFR Part 11 and GxP standards.
+
+2.0 SCOPE
+Applies to all computerized systems used in GxP operations, including laboratory information systems, manufacturing execution systems, and data archiving servers.
+
+3.0 VALIDATION LIFECYCLE STEPS
+3.1 GAMP 5 Classification: All systems must be classified under GAMP 5 categories to determine the validation strategy.
+3.2 Validation Planning: A validation plan (VP) must be authored to define the testing strategy, acceptance criteria, and roles.
+3.3 Specifications: User Requirement Specifications (URS) and Functional Specifications (FS) must be documented and approved.
+3.4 Execution (IQ/OQ/PQ):
+  - Installation Qualification (IQ): Verifies hardware and software installation matches specification.
+  - Operational Qualification (OQ): Verifies system functions and boundary limits operate as intended.
+  - Performance Qualification (PQ): Verifies system consistently performs under routine operational workloads.
+3.5 Validation Summary Report (VSR): QA must review and sign the VSR before releasing the computer system for GxP production use.
+"""
+
+SOP_108_TEXT = """
+STANDARD OPERATING PROCEDURE: SOP-108
+TITLE: CLEANROOM ENVIRONMENTAL MONITORING
+VERSION: 1
+
+1.0 PURPOSE
+This procedure defines the requirements for microbiological and particulate environmental monitoring of aseptic manufacturing facilities to ensure compliance with sterile production standards.
+
+2.0 SCOPE
+Applies to all cleanrooms, critical laminar flow hoods, airlocks, and personnel gowning areas associated with sterile pharmaceutical manufacturing.
+
+3.0 MONITORING FREQUENCIES AND LIMITS
+3.1 Non-Viable Particulate Limits: Air particle counts must be monitored during operational and static states. ISO Class 5 areas must maintain particle counts of ≤ 3,520 particles/m³ for particles ≥ 0.5 µm.
+3.2 Viable Microbial Monitoring: Active air sampling, settle plates (agar exposure), and contact swab plates must be used to monitor microbial contamination.
+3.3 Action and Alert Limits: Action limits (prompting formal investigation) and alert limits (triggering increased monitoring) must be established based on historical baseline performance.
+3.4 Gowning Certification: Gowning technicians must undergo sterile gowning certification and periodic visual/swab check monitoring to verify compliance with aseptic techniques.
+"""
+
+SOP_109_TEXT = """
+STANDARD OPERATING PROCEDURE: SOP-109
+TITLE: EQUIPMENT CALIBRATION AND PREVENTIVE MAINTENANCE
+VERSION: 1
+
+1.0 PURPOSE
+Defines the management, scheduling, execution, and documentation of calibration and preventive maintenance for critical laboratory and manufacturing instruments.
+
+2.0 SCOPE
+Applies to all GxP scales, temperature sensors, pressure gauges, and analytical instruments.
+
+3.0 CALIBRATION CONTROLS
+3.1 Calibration Schedule: Critical instruments must be calibrated according to a defined frequency (e.g., monthly, semi-annually, or annually) using standard operating guidelines.
+3.2 Traceability: All calibration standards must be traceable to the National Institute of Standards and Technology (NIST) or international equivalent standards.
+3.3 Out-of-Calibration (OOC): If an instrument is found outside its acceptable tolerance range, it must be tagged "Out of Service," and an Out-of-Calibration investigation must be launched immediately to evaluate the impact on previous manufacturing batches.
+3.4 Preventive Maintenance (PM): PM procedures must be executed to replace wear-and-tear components (such as gaskets, filters, and O-rings) according to the manufacturer's recommendations.
+"""
+
+SOP_110_TEXT = """
+STANDARD OPERATING PROCEDURE: SOP-110
+TITLE: BATCH RECORD REVIEW AND QUALITY RELEASE
+VERSION: 1
+
+1.0 PURPOSE
+Governs the systematic review of Batch Manufacturing Records (BMR) and analytical testing records to ensure batches conform to specifications before final release to market.
+
+2.0 SCOPE
+Applies to all commercial batches of drug substances and drug products manufactured by BioPharma Corp.
+
+3.0 RELEASE PROCESS
+3.1 Batch Record Audit: The manufacturing supervisor must review the completed BMR, verifying that all entries are complete, calculations are correct, and signatures are in place.
+3.2 Deviation Review: All deviations, failures, and OOS investigations associated with the batch must be resolved and closed by QA before final batch release.
+3.3 QA Certificate of Analysis (CoA): Analytical test results must match standard release specifications. A CoA must be compiled and signed off by the Quality Control lab.
+3.4 Electronic Signature Release: The QA Manager executes the final release decision using a dual-factor electronic signature, confirming the batch was manufactured in strict compliance with GMP guidelines.
+"""
+
 
 def get_password_hash(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
@@ -162,7 +277,7 @@ def seed_database():
 
         # 3. Seed Users
         user_qa = User(
-            id=uuid.uuid4(),
+            id=uuid.UUID("40bb96dc-6e9f-431f-b5de-84d7a188f58b"),
             email="qa@biopharma.com",
             hashed_password=get_password_hash("password"),
             role="QA Manager",
@@ -170,7 +285,7 @@ def seed_database():
             created_at=datetime.now(timezone.utc)
         )
         user_eng = User(
-            id=uuid.uuid4(),
+            id=uuid.UUID("759f21f7-e7d6-444a-a92c-56961421ab7b"),
             email="eng@biopharma.com",
             hashed_password=get_password_hash("password"),
             role="Validation Engineer",
@@ -191,7 +306,13 @@ def seed_database():
             ("SOP-101.txt", SOP_101_TEXT, "SOP-101: Access Control"),
             ("SOP-102.txt", SOP_102_TEXT, "SOP-102: Electronic Signatures"),
             ("SOP-103.txt", SOP_103_TEXT, "SOP-103: Audit Trails"),
-            ("SOP-104.txt", SOP_104_TEXT, "SOP-104: Document Lifecycle")
+            ("SOP-104.txt", SOP_104_TEXT, "SOP-104: Document Lifecycle"),
+            ("SOP-105.txt", SOP_105_TEXT, "SOP-105: CAPA Program"),
+            ("SOP-106.txt", SOP_106_TEXT, "SOP-106: Change Control"),
+            ("SOP-107.txt", SOP_107_TEXT, "SOP-107: CSV Lifecycle"),
+            ("SOP-108.txt", SOP_108_TEXT, "SOP-108: Cleanroom Environmental Monitoring"),
+            ("SOP-109.txt", SOP_109_TEXT, "SOP-109: Equipment Calibration"),
+            ("SOP-110.txt", SOP_110_TEXT, "SOP-110: Batch Record Review and Release")
         ]
 
         doc_models = []

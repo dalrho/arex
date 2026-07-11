@@ -189,6 +189,10 @@ export function runImpactAssessment(regulationId: string): Promise<ImpactRespons
   return sendJson(`/impact/regulation/${regulationId}/assess`, "POST");
 }
 
+export function preScanMatchedDocuments(regulationId: string): Promise<{ id: string; filename: string }[]> {
+  return getJson(`/impact/regulation/${regulationId}/pre_scan`);
+}
+
 export function listRemediations(regulationId?: string): Promise<RemediationResponse[]> {
   const query = regulationId ? `?regulation_id=${regulationId}` : "";
   return getJson(`/remediation${query}`);

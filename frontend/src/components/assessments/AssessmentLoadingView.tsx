@@ -8,6 +8,7 @@ type AssessmentLoadingViewProps = {
   activeNodeCount?: number;
   regulationTitle?: string;
   documents?: { id: string; filename: string }[];
+  affectedFileCount?: number | null;
 };
 
 const EMPTY_ARRAY: { id: string; filename: string }[] = [];
@@ -16,6 +17,7 @@ export default function AssessmentLoadingView({
   activeNodeCount,
   regulationTitle = "Regulation Update",
   documents: initialDocuments,
+  affectedFileCount,
 }: AssessmentLoadingViewProps) {
   const [allDocs, setAllDocs] = useState<{ id: string; filename: string }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -67,14 +69,16 @@ export default function AssessmentLoadingView({
         </h1>
         <div className="mt-4 inline-flex items-center gap-2 rounded-md border border-cyan-300/50 bg-cyan-300/10 px-3 py-1 text-[10px] font-extrabold uppercase tracking-normal text-cyan-100 shadow-[0_0_24px_rgba(34,211,238,0.18)]">
           <span className="h-1.5 w-1.5 rounded-full bg-cyan-200 shadow-[0_0_12px_rgba(103,232,249,0.9)] animate-pulse" />
-          {isFirstRun ? (
+          {affectedFileCount != null ? (
+            `${affectedFileCount} ${affectedFileCount === 1 ? "file" : "files"} need revision`
+          ) : isFirstRun ? (
             allDocs.length > 0 ? (
               `Scanning ${affectedCount} / ${allDocs.length} files`
             ) : (
               `Scanning ${affectedCount} files`
             )
           ) : (
-            `${affectedCount} files affected`
+            `${affectedDocs.length} ${affectedDocs.length === 1 ? "file" : "files"} need revision`
           )}
         </div>
         <AssessmentKnowledgeGraph

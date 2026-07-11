@@ -526,6 +526,7 @@ function RegulationsPage() {
           <AssessmentLoadingView 
             regulationTitle={selectedRailRegulation?.title || selected?.title} 
             documents={relatedDocs.length > 0 ? relatedDocs : undefined}
+            affectedFileCount={relatedDocs.length > 0 ? relatedDocs.length : null}
           />
         ) : !selected ? (
           <RegulationsHome

@@ -31,7 +31,6 @@ const settingsNavigation = [
 ];
 
 
-
 // ---------------------------------------------------------------------------
 // DashboardShell
 // ---------------------------------------------------------------------------
@@ -138,8 +137,6 @@ function Sidebar({
           priority
         />
       </Link>
-
-
 
       {/* Navigation links */}
       <nav className="flex-1 px-5 py-6 flex flex-col gap-6">

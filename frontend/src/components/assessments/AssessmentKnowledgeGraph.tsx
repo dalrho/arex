@@ -71,11 +71,13 @@ function generateDynamicGraph(
   // Identify affected document IDs
   const affectedIds = new Set(affectedDocuments.map((d) => d.id));
 
-  // 2. Document nodes distributed on an outer shell representing ALL files on the website
-  const numDocs = allDocuments.length;
+  // Determine which documents to render as nodes:
+  // Show only affected documents if known; fallback to all documents for scanning visual during first run
+  const resolvedDocs = affectedDocuments.length > 0 ? affectedDocuments : allDocuments;
+  const numDocs = resolvedDocs.length;
 
   for (let i = 0; i < numDocs; i++) {
-    const doc = allDocuments[i];
+    const doc = resolvedDocs[i];
     const theta = (i / numDocs) * Math.PI * 2;
     const phi = Math.PI / 3 + (i % 2) * (Math.PI / 6); // tilt angle
     const radius = 0.76;
@@ -91,8 +93,8 @@ function generateDynamicGraph(
     nodes.push(docNode);
     const docIndex = nodes.length - 1;
 
-    // If this file is affected, include it in the active tracing scanning route!
-    if (affectedIds.has(doc.id)) {
+    // If this file is affected (or if we are scanning all documents on first run), include it in the active tracing scanning route!
+    if (affectedIds.size === 0 || affectedIds.has(doc.id)) {
       routeNodeIndexes.push(docIndex);
     }
   }
@@ -216,15 +218,15 @@ function updateForceDirectedSimulation(nodes: PhysicsNode[], links: GraphLink[],
 
 function rotateAndProjectNodes(nodes: PhysicsNode[], width: number, height: number, elapsedSeconds: number) {
   const centerX = width / 2;
-  const centerY = height / 2;
-  const radius = Math.min(width, height) * 0.34;
+  const centerY = height * 0.52;          // shift down slightly — gives top-nodes more room
+  const radius = Math.min(width, height) * 0.22;
   const yRotation = elapsedSeconds * 0.22;
-  const xTilt = -0.28;
+  const xTilt = -0.18;                    // less tilt → nodes stay closer to midline
   const yCos = Math.cos(yRotation);
   const ySin = Math.sin(yRotation);
   const xCos = Math.cos(xTilt);
   const xSin = Math.sin(xTilt);
-  const focalLength = 2.7;
+  const focalLength = 3.5;               // larger → less perspective exaggeration
 
   return nodes.map((node) => {
     // Project and rotate using current simulation coordinates
@@ -535,7 +537,7 @@ export default function AssessmentKnowledgeGraph({
     let pixelRatio = 1;
 
     let lastTime = performance.now();
-    const startTime = performance.now();
+    let startTime: number | null = null;
     const reduceMotion = false; // Always animate, bypassing OS preferences for this loading screen
 
     const resize = () => {
@@ -553,6 +555,10 @@ export default function AssessmentKnowledgeGraph({
     const render = (timestamp: number) => {
       const dt = Math.min(0.03, (timestamp - lastTime) / 1000); // Caps delta time at 30ms to prevent jumps
       lastTime = timestamp;
+
+      if (startTime === null) {
+        startTime = timestamp;
+      }
 
       // Run force-directed simulation step
       if (physicsNodesRef.current.length > 0 && !reduceMotion) {
@@ -594,7 +600,7 @@ export default function AssessmentKnowledgeGraph({
         context,
         width,
         height,
-        (performance.now() - startTime) / 1000,
+        startTime === null ? 0 : (performance.now() - startTime) / 1000,
         active && !reduceMotion,
         physicsNodesRef.current,
         graphLinks,
@@ -617,7 +623,7 @@ export default function AssessmentKnowledgeGraph({
       ref={containerRef}
       aria-label="Animated 3D assessment sphere showing compliance analysis links connecting regulation and SOP files."
       role="img"
-      className={clsx("relative w-full overflow-hidden", heightClassName ?? "h-[24rem] md:h-[30rem]", className)}
+      className={clsx("relative w-full", heightClassName ?? "h-[24rem] md:h-[30rem]", className)}
     >
       <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
       <div className="pointer-events-none absolute inset-x-[14%] bottom-[7%] h-px bg-cyan-300/10 blur-sm" />
