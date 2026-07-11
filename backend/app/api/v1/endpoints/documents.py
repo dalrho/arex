@@ -339,3 +339,70 @@ def get_document_version(
         )
     return version
 
+@router.get("/{document_id}/versions/{version_number}/download")
+def download_document_version(
+    document_id: uuid.UUID,
+    version_number: int,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_tenant_id)
+) -> Any:
+    """
+    Download the file for a specific document version.
+    """
+    from fastapi.responses import FileResponse, Response
+    import mimetypes
+
+    org_id = uuid.UUID(tenant_id)
+    document = db.query(Document).filter(
+        Document.id == document_id,
+        Document.organization_id == org_id
+    ).first()
+    
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found"
+        )
+        
+    version = db.query(DocumentVersion).filter(
+        DocumentVersion.document_id == document_id,
+        DocumentVersion.version == version_number
+    ).first()
+    
+    if not version:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Version not found"
+        )
+
+    mime_type, _ = mimetypes.guess_type(version.filename)
+    if not mime_type:
+        if version.filename.lower().endswith(".pdf"):
+            mime_type = "application/pdf"
+        elif version.filename.lower().endswith(".txt"):
+            mime_type = "text/plain"
+        elif version.filename.lower().endswith(".docx"):
+            mime_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        else:
+            mime_type = "application/octet-stream"
+
+    if version.file_path and os.path.exists(version.file_path):
+        return FileResponse(
+            path=version.file_path,
+            filename=version.filename,
+            media_type=mime_type,
+            content_disposition_type="attachment",
+        )
+
+    if version.parsed_text:
+        fallback_name = os.path.splitext(version.filename)[0] + ".txt"
+        return Response(
+            content=version.parsed_text,
+            media_type="text/plain; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{fallback_name}"'},
+        )
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="Stored file is no longer available for this document version."
+    )
