@@ -57,6 +57,12 @@ class Settings(BaseSettings):
     GEMINI_EMBEDDING_MODEL: str = "gemini-embedding-001"
 
     # -----------------------------------------------------------------------
+    # Fireworks AI Settings (Online AI Mode for LLM completion)
+    # -----------------------------------------------------------------------
+    FIREWORKS_API_KEY: str = ""
+    FIREWORKS_MODEL: str = "accounts/fireworks/models/qwen3-32b"
+
+    # -----------------------------------------------------------------------
     # Jira Integration Settings
     # -----------------------------------------------------------------------
     JIRA_URL: str = ""
@@ -88,6 +94,23 @@ class Settings(BaseSettings):
         if self.LLM_API_KEY and "your_llm_provider" not in self.LLM_API_KEY:
             return self.LLM_API_KEY.strip()
         return ""
+
+    @property
+    def fireworks_model_formatted(self) -> str:
+        model_path = self.FIREWORKS_MODEL
+        if not model_path:
+            return ""
+        last_part = model_path.split("/")[-1]
+        parts = last_part.split("-")
+        formatted_parts = []
+        for p in parts:
+            if p.lower() in ("32b", "72b", "7b", "8b", "14b", "70b"):
+                formatted_parts.append(p.upper())
+            elif p.lower().startswith("qwen"):
+                formatted_parts.append(p.capitalize())
+            else:
+                formatted_parts.append(p.capitalize())
+        return "-".join(formatted_parts)
 
 
 settings = Settings()

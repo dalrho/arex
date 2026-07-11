@@ -28,6 +28,8 @@ services:
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - GEMINI_MODEL_NAME=models/gemini-3.1-flash-lite
       - GEMINI_EMBEDDING_MODEL=gemini-embedding-001
+      - FIREWORKS_API_KEY=${FIREWORKS_API_KEY:-}
+      - FIREWORKS_MODEL=${FIREWORKS_MODEL:-accounts/fireworks/models/qwen3-32b}
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
   # Frontend local dev overrides: port exposure and Next.js hot reload volumes

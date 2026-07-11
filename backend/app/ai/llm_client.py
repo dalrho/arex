@@ -24,13 +24,13 @@ class LLMClient:
         Returns True when offline/mock mode is active.
         Offline mode is triggered by:
         - AI_MODE != "online"
-        - OR no valid Gemini API key found
+        - OR no valid Fireworks API key found
         """
         if not self.settings.is_online_mode:
             return True
-        if not self.settings.effective_gemini_key:
+        if not self.settings.FIREWORKS_API_KEY or not self.settings.FIREWORKS_API_KEY.strip():
             logger.warning(
-                "AI_MODE=online but no Gemini API key found. Falling back to Offline Mode."
+                "AI_MODE=online but no Fireworks API key found. Falling back to Offline Mode."
             )
             return True
         return False
@@ -50,7 +50,7 @@ class LLMClient:
         """
         Sends a chat completion request to the LLM.
 
-        Online Mode  → Gemini API via google.genai SDK
+        Online Mode  → Fireworks AI API via fireworks-ai SDK
         Offline Mode → deterministic mock responses (no LLM calls)
 
         Args:
@@ -60,7 +60,7 @@ class LLMClient:
             max_tokens:     Maximum output tokens.
             context_docs:   Retrieved KB documents to inject as RAG grounding context.
         """
-        mode_label = "OFFLINE (mock)" if self.is_offline_mode() else f"ONLINE (Gemini {self.settings.GEMINI_MODEL_NAME})"
+        mode_label = "OFFLINE (mock)" if self.is_offline_mode() else f"ONLINE (Fireworks {self.settings.FIREWORKS_MODEL})"
         logger.info(
             f"[LLMClient] Mode={mode_label} | "
             f"StructuredOutput={response_model.__name__ if response_model else 'None'} | "
@@ -74,7 +74,7 @@ class LLMClient:
         # Inject RAG context into the system prompt
         enriched_messages = self._inject_rag_context(messages, context_docs)
 
-        return self._call_gemini(
+        return self._call_fireworks(
             messages=enriched_messages,
             response_model=response_model,
             temperature=temperature,
@@ -127,10 +127,10 @@ class LLMClient:
         return enriched
 
     # ------------------------------------------------------------------
-    # Gemini API call (google.genai SDK — new unified SDK)
+    # Fireworks AI API call (fireworks-ai SDK)
     # ------------------------------------------------------------------
 
-    def _call_gemini(
+    def _call_fireworks(
         self,
         messages: List[Dict[str, str]],
         response_model: Optional[Type[T]],
@@ -139,38 +139,31 @@ class LLMClient:
         attempts: int = 3,
     ) -> Any:
         """
-        Calls Google Gemini via the google.genai SDK.
+        Calls Fireworks AI via the official fireworks SDK.
         Supports structured JSON output with retry logic.
         """
         try:
-            from google import genai  # type: ignore
-            from google.genai import types as genai_types  # type: ignore
+            from fireworks import Fireworks
         except ImportError as exc:
             raise RuntimeError(
-                "google-genai package is not installed. Run: pip install google-genai"
+                "fireworks-ai package is not installed. Run: pip install fireworks-ai"
             ) from exc
 
-        client = genai.Client(api_key=self.settings.effective_gemini_key)
+        client = Fireworks(api_key=self.settings.FIREWORKS_API_KEY)
 
-        # Split messages into system instruction and conversation history
-        system_instruction = None
-        contents = []
-        user_prompt = ""
+        # Find system message or prepare to prepend
+        system_msg_idx = -1
+        for i, msg in enumerate(messages):
+            if msg.get("role") == "system":
+                system_msg_idx = i
+                break
 
-        for msg in messages:
-            role = msg.get("role", "user")
-            content = msg.get("content", "")
-            if role == "system":
-                system_instruction = content
-            elif role == "assistant":
-                contents.append(
-                    genai_types.Content(role="model", parts=[genai_types.Part(text=content)])
-                )
-            else:
-                user_prompt = content  # last user message
-
-        # Append JSON schema instruction if structured output is needed
+        # Standard OpenAI/Fireworks chat completion parameters
+        extra_args = {}
         if response_model:
+            # Tell fireworks we want JSON format
+            extra_args["response_format"] = {"type": "json_object"}
+            
             schema_hint = json.dumps(
                 {k: str(v.annotation) for k, v in response_model.model_fields.items()},
                 indent=2,
@@ -179,44 +172,45 @@ class LLMClient:
                 f"\n\nYou MUST respond with a SINGLE valid JSON object matching this schema "
                 f"(no markdown code fences, no extra text outside the JSON):\n{schema_hint}"
             )
-            system_instruction = (system_instruction or "You are a helpful compliance assistant.") + json_instruction
+            if system_msg_idx != -1:
+                # Update existing system prompt
+                current_messages = list(messages)
+                current_messages[system_msg_idx] = {
+                    "role": "system",
+                    "content": messages[system_msg_idx]["content"] + json_instruction
+                }
+            else:
+                # Prepend system prompt
+                current_messages = [{"role": "system", "content": "You are a helpful compliance assistant." + json_instruction}] + list(messages)
+        else:
+            current_messages = list(messages)
 
-        generation_config = genai_types.GenerateContentConfig(
-            temperature=temperature,
-            max_output_tokens=max_tokens,
-            system_instruction=system_instruction,
-        )
+        model_name = self.settings.FIREWORKS_MODEL
 
-        current_user_prompt = user_prompt
         for attempt in range(1, attempts + 1):
             start_time = time.time()
             try:
                 logger.info(
-                    f"[LLMClient] Gemini API call attempt {attempt}/{attempts} | "
-                    f"Model: {self.settings.GEMINI_MODEL_NAME}"
-                )
-
-                # Build final contents list for this attempt
-                call_contents = list(contents)
-                call_contents.append(
-                    genai_types.Content(role="user", parts=[genai_types.Part(text=current_user_prompt)])
+                    f"[LLMClient] Fireworks API call attempt {attempt}/{attempts} | "
+                    f"Model: {model_name}"
                 )
 
                 logger.info(
                     f"[DEBUG LOG] Context sent to LLM:\n"
-                    f"--- SYSTEM INSTRUCTION ---\n{system_instruction}\n"
-                    f"--- USER PROMPT ---\n{current_user_prompt}\n"
+                    f"--- MESSAGES ---\n{json.dumps(current_messages, indent=2)}\n"
                     f"--------------------------"
                 )
 
-                response = client.models.generate_content(
-                    model=self.settings.GEMINI_MODEL_NAME,
-                    contents=call_contents,
-                    config=generation_config,
+                response = client.chat.completions.create(
+                    model=model_name,
+                    messages=current_messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    **extra_args
                 )
 
                 latency = time.time() - start_time
-                raw_text = response.text
+                raw_text = response.choices[0].message.content
 
                 logger.info(
                     f"[DEBUG LOG] Raw LLM response:\n"
@@ -225,13 +219,13 @@ class LLMClient:
                 )
 
                 # Extract token usage if available
-                usage = getattr(response, "usage_metadata", None)
-                prompt_tokens = getattr(usage, "prompt_token_count", 0) if usage else 0
-                completion_tokens = getattr(usage, "candidates_token_count", 0) if usage else 0
-                total_tokens = getattr(usage, "total_token_count", prompt_tokens + completion_tokens) if usage else 0
+                usage = getattr(response, "usage", None)
+                prompt_tokens = getattr(usage, "prompt_tokens", 0) if usage else 0
+                completion_tokens = getattr(usage, "completion_tokens", 0) if usage else 0
+                total_tokens = getattr(usage, "total_tokens", prompt_tokens + completion_tokens) if usage else 0
 
                 logger.info(
-                    f"[LLMClient] Gemini call succeeded | "
+                    f"[LLMClient] Fireworks call succeeded | "
                     f"Latency: {latency:.2f}s | "
                     f"Tokens: {total_tokens} (prompt={prompt_tokens}, completion={completion_tokens})"
                 )
@@ -262,18 +256,17 @@ class LLMClient:
                         if attempt == attempts:
                             raise parse_error
                         # Feed correction back as next prompt
-                        contents.append(
-                            genai_types.Content(role="model", parts=[genai_types.Part(text=raw_text)])
-                        )
-                        current_user_prompt = (
-                            f"Your previous response was invalid JSON: {str(parse_error)}. "
-                            "Please output ONLY a valid JSON object matching the required schema."
-                        )
+                        current_messages.append({"role": "assistant", "content": raw_text})
+                        current_messages.append({
+                            "role": "user",
+                            "content": f"Your previous response was invalid JSON: {str(parse_error)}. "
+                                       "Please output ONLY a valid JSON object matching the required schema."
+                        })
                 else:
                     return raw_text
 
             except Exception as e:
-                logger.error(f"[LLMClient] Gemini error on attempt {attempt}: {e}")
+                logger.error(f"[LLMClient] Fireworks error on attempt {attempt}: {e}")
                 if attempt == attempts:
                     raise e
                 time.sleep(2 ** attempt)  # exponential backoff

@@ -27,8 +27,8 @@ COPY backend/pyproject.toml backend/poetry.lock* ./
 # Install python dependencies
 RUN poetry install --no-root
 
-# Install google-genai (Gemini AI SDK) — required for Online AI Mode
-RUN pip install google-genai
+# Install google-genai (Gemini AI SDK) and fireworks-ai (Fireworks AI SDK) — required for Online AI Mode
+RUN pip install google-genai fireworks-ai
 
 # Copy application code to workspace
 COPY backend/app ./app

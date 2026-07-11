@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from typing import Any, Optional
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, model_validator, computed_field
 
 
 class RemediationUpdateRequest(BaseModel):
@@ -25,6 +25,17 @@ class RemediationResponse(BaseModel):
     reviewed_at: Optional[datetime] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
+
+    @computed_field
+    @property
+    def provider(self) -> str:
+        return "Fireworks AI"
+
+    @computed_field
+    @property
+    def model(self) -> str:
+        from app.core.config import settings
+        return settings.fireworks_model_formatted
 
     # Aliases
     sopId: Optional[uuid.UUID] = None
