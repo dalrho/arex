@@ -344,18 +344,91 @@ class LLMClient:
             )
 
         elif "impact" in response_model.__name__.lower() or "assessment" in response_model.__name__.lower():
-            # Mock impact assessment response
-            risk_score = 0.85
-            impact_level = "High"
+            # Mock impact assessment response — dynamically determine which SOPs need revision
+            # based on keywords present in the regulation content, simulating a real LLM analysis.
+
+            # Determine risk profile from regulation text
+            is_high_risk = any(kw in combined_text for kw in [
+                "mfa", "multi-factor", "timeout", "session", "suspend", "recall", "withdrawal",
+                "penalty", "violation", "warning letter"
+            ])
+            risk_score = 0.85 if is_high_risk else 0.45
+            impact_level = "High" if is_high_risk else "Medium"
+
+            # Determine which SOPs need revision based on what the regulation touches
+            explanations: dict = {}
+
+            # SOP-101: Electronic Records & System Access Control
+            if any(kw in combined_text for kw in [
+                "mfa", "multi-factor", "timeout", "session", "password", "access control",
+                "login", "authentication", "lock", "user account", "system security",
+                "electronic record", "21 cfr part 11", "part 11"
+            ]):
+                explanations["SOP-101.txt"] = (
+                    "SOP-101 (Electronic Records and System Access Control) requires revision. "
+                    "The regulation introduces updated requirements for session security, access controls, "
+                    "or electronic record integrity that are not currently covered by this SOP."
+                )
+
+            # SOP-102: Electronic Signatures & Signing Authority
+            if any(kw in combined_text for kw in [
+                "signature", "signing", "sign", "electronic signature", "esignature",
+                "authority", "approval", "signatory", "wet signature", "binding"
+            ]):
+                explanations["SOP-102.txt"] = (
+                    "SOP-102 (Electronic Signatures and Signing Authority) requires revision. "
+                    "The regulation introduces new or updated requirements for electronic signature "
+                    "validation, signing authority, or signature binding that are not reflected in current procedures."
+                )
+
+            # SOP-103: Audit Trail & Record Integrity
+            if any(kw in combined_text for kw in [
+                "audit", "log", "trail", "record", "integrity", "traceability",
+                "change control", "modification", "history", "event log", "tamper"
+            ]):
+                explanations["SOP-103.txt"] = (
+                    "SOP-103 (Audit Trail and Record Integrity) requires revision. "
+                    "The regulation mandates stricter audit trail or record integrity requirements "
+                    "that go beyond what is currently specified in this SOP."
+                )
+
+            # SOP-104: Document Control & Version Management
+            if any(kw in combined_text for kw in [
+                "document", "version", "revision", "sop", "procedure", "lifecycle",
+                "archive", "retire", "control", "master", "effective date"
+            ]):
+                explanations["SOP-104.txt"] = (
+                    "SOP-104 (Document Control and Version Management) requires revision. "
+                    "The regulation introduces new document lifecycle, versioning, or archival "
+                    "requirements that are not addressed by the current document control procedures."
+                )
+
+            # Fallback: if no specific SOP matched, at minimum flag SOP-101 as the catch-all
+            if not explanations:
+                explanations["SOP-101.txt"] = (
+                    "SOP-101 requires general review and revision to ensure compliance with "
+                    "the updated regulation requirements."
+                )
+
+            # Determine affected departments
+            affected_departments = []
+            if "SOP-101.txt" in explanations:
+                affected_departments.extend(["IT", "Quality Assurance"])
+            if "SOP-102.txt" in explanations:
+                affected_departments.extend(["Quality Assurance", "Training"])
+            if "SOP-103.txt" in explanations:
+                affected_departments.extend(["Quality Assurance", "Engineering"])
+            if "SOP-104.txt" in explanations:
+                affected_departments.extend(["Quality Assurance", "Regulatory Affairs"])
+            affected_departments = list(dict.fromkeys(affected_departments))  # deduplicate
+
             rationale = (
-                "The new FDA amendment mandates Multi-Factor Authentication (MFA) and reduces the permissible idle "
-                "timeout limit to 15 minutes. Our current SOP-101 (Access Control) does not require MFA and permits "
-                "a 30-minute idle session timeout. This constitutes a high-priority compliance gap requiring immediate revision."
+                f"Impact analysis identified {len(explanations)} SOP(s) requiring revision to comply "
+                f"with the new regulation. The regulation introduces requirements in areas including: "
+                + ", ".join(explanations.keys())
+                + ". These documents must be reviewed and updated before the regulation effective date."
             )
-            affected_departments = ["IT", "Quality Assurance", "Engineering"]
-            explanations = {
-                "SOP-101.txt": "Our current SOP-101 permits a 30-minute idle session timeout and does not specify MFA controls, creating a direct compliance gap."
-            }
+
             return response_model(
                 risk_score=risk_score,
                 impact_level=impact_level,
@@ -366,33 +439,141 @@ class LLMClient:
 
         # 2. Remediation Draft Output
         elif "remediation" in response_model.__name__.lower() or "draft" in response_model.__name__.lower():
-            if "sop-101" in combined_text or "access control" in combined_text or "timeout" in combined_text:
+            # Extract regulation details
+            reg_title = "FDA Regulatory Update"
+            lines = [l.strip() for l in combined_text.split("\n") if l.strip()]
+            for line in lines:
+                if "source regulation update:" in line:
+                    continue
+                cleaned = line.replace("[", "").replace("]", "").strip()
+                if len(cleaned) > 15:
+                    reg_title = cleaned[:100].title()
+                    break
+
+            # 2.1 Distributed Manufacturing / Drug Establishment / Registration / Part 207
+            if any(kw in combined_text for kw in ["distributed manufacturing", "establishment registration", "drug listing", "part 207"]):
+                if "sop-101" in combined_text:
+                    original_text = (
+                        "1.0 PURPOSE\nThis procedure establishes the administrative, technical, and physical controls "
+                        "to ensure system security, access control, and electronic record integrity under FDA 21 CFR Part 11."
+                    )
+                    proposed_text = (
+                        "1.0 PURPOSE\nThis procedure establishes the administrative, technical, and physical controls "
+                        "to ensure system security, access control, and electronic record integrity under FDA 21 CFR Part 11. "
+                        "Additionally, systems supporting distributed manufacturing or foreign drug listings must enforce secure, "
+                        "authorized remote data transmission in accordance with 21 CFR Part 207 registration requirements."
+                    )
+                    citations = ["21 CFR Part 207.25", "21 CFR Part 11.10(a)"]
+                    rationale = "Extends access control and record verification requirements to distributed manufacturing and foreign drug listing systems."
+                elif "sop-102" in combined_text:
+                    original_text = (
+                        "3.1 Signature Binding: The electronic signature must be linked to its respective record to ensure "
+                        "that the signature cannot be excised, copied, or otherwise transferred."
+                    )
+                    proposed_text = (
+                        "3.1 Signature Binding: The electronic signature must be linked to its respective record. For "
+                        "biological products and foreign establishments under registration mandates, electronic signatures must "
+                        "validate signature authenticity against foreign-site operator credentials."
+                    )
+                    citations = ["21 CFR Part 207.25", "21 CFR Part 11.70"]
+                    rationale = "Adds electronic signature binding validations for operators at foreign facilities."
+                else:  # SOP-104 / Default
+                    original_text = (
+                        "4.1 Document Creation: Standard Operating Procedures (SOPs) are drafted by subject matter experts "
+                        "to document critical business activities."
+                    )
+                    proposed_text = (
+                        "4.1 Document Creation: Standard Operating Procedures (SOPs) are drafted by subject matter experts. "
+                        "For sites engaged in distributed manufacturing or operations outside the domestic market, document control "
+                        "must ensure all foreign facility and subcontractor procedures are registered, versioned, and verified by Quality Assurance."
+                    )
+                    citations = ["21 CFR Part 207.17", "21 CFR Part 207.33"]
+                    rationale = "Enforces document control and lifecycle checks for foreign establishments and distributed manufacturing partner facilities."
+
+            # 2.2 Biologics / Cell / Tissue / BLA / Part 601
+            elif any(kw in combined_text for kw in ["biologics", "biological", "tissue", "cell", "bla", "part 601"]):
+                if "sop-102" in combined_text:
+                    original_text = (
+                        "4.2 Signature Authority: Only individuals with appropriate training, job functions, and organizational "
+                        "authority are permitted to sign quality records."
+                    )
+                    proposed_text = (
+                        "4.2 Signature Authority: Only individuals with appropriate training are permitted to sign quality records. "
+                        "For BLA product release, signature authority must be restricted to qualified key personnel listed in the active biologics application."
+                    )
+                    citations = ["21 CFR Part 601.2(a)"]
+                    rationale = "Aligns electronic signature authority controls with BLA personnel qualifications."
+                else:  # SOP-104 / Default
+                    original_text = (
+                        "5.1 Version Control: All changes to master quality documents must be tracked using sequential version numbers."
+                    )
+                    proposed_text = (
+                        "5.1 Version Control: All changes to master quality documents must be tracked using sequential version numbers. "
+                        "Documents pertaining to biological products or BLA (Biologics License Applications) must be indexed and archived under BLA-specific lifecycle management protocols."
+                    )
+                    citations = ["21 CFR Part 601.2", "21 CFR Part 601.12"]
+                    rationale = "Establishes Biologics License Application (BLA) document version and lifecycle control alignment."
+
+            # 2.3 Medical Devices / Premarket Approval / PMA / User Fee
+            elif any(kw in combined_text for kw in ["device", "premarket approval", "user fee", "pma", "part 814"]):
+                if "sop-101" in combined_text:
+                    original_text = (
+                        "3.2 Session Timeout: Computer terminals and software applications must automatically log out a user "
+                        "or lock the display terminal after 30 minutes of continuous keyboard or mouse inactivity."
+                    )
+                    proposed_text = (
+                        "3.2 Session Timeout: Computer terminals and software applications must automatically log out a user "
+                        "or lock the display terminal after 15 minutes of inactivity. For medical devices under PMA (Premarket Approval) "
+                        "design history control, access trails must be maintained for the lifetime of the device."
+                    )
+                    citations = ["21 CFR Part 814.20", "21 CFR Part 11.10(b)"]
+                    rationale = "Updates session security timeout and enforces device master history record preservation requirements."
+                elif "sop-103" in combined_text:
+                    original_text = (
+                        "3.1 Audit Trail Generation: The system must automatically generate a secure, computer-generated, time-stamped "
+                        "audit trail to record the date and time of operator entries..."
+                    )
+                    proposed_text = (
+                        "3.1 Audit Trail Generation: The system must automatically generate a secure audit trail. For medical devices "
+                        "subject to premarket approval, the audit trail must capture all parameter and configuration changes and be exported as part of the medical device history record."
+                    )
+                    citations = ["21 CFR Part 814.82", "21 CFR Part 11.10(e)"]
+                    rationale = "Ensures PMA device configuration changes are fully logged in time-stamped audit trails."
+                else:  # Default
+                    original_text = "5.0 Document Archival: Quality records must be retained for a minimum period of five (5) years."
+                    proposed_text = (
+                        "5.0 Document Archival: Quality records must be retained for a minimum period of five (5) years. For medical devices, "
+                        "device history records must be archived for a period corresponding to the expected lifetime of the device, but not less than 2 years from release."
+                    )
+                    citations = ["21 CFR Part 820.180"]
+                    rationale = "Adjusts standard quality record retention timelines to comply with medical device quality system regulations."
+
+            # 2.4 Animal Drugs / Veterinary / Part 514
+            elif any(kw in combined_text for kw in ["animal", "veterinary", "nada", "part 514"]):
                 original_text = (
-                    "3.1 Password Complexity: User passwords must be a minimum of 8 characters, "
-                    "containing at least one uppercase letter, one lowercase letter, one numeric digit, and one special character.\n"
-                    "3.2 Session Timeout: Computer terminals and software applications must automatically log out a "
-                    "user or lock the display terminal after 30 minutes of continuous keyboard or mouse inactivity."
+                    "5.1 Version Control: All changes to master quality documents must be tracked using sequential version numbers."
                 )
                 proposed_text = (
-                    "3.1 Password Complexity: User passwords must be a minimum of 8 characters, "
-                    "containing at least one uppercase letter, one lowercase letter, one numeric digit, and one special character. "
-                    "Additionally, Multi-Factor Authentication (MFA) must be enforced for all user accounts.\n"
-                    "3.2 Session Timeout: Computer terminals and software applications must automatically log out a "
-                    "user or lock the display terminal after 15 minutes of continuous keyboard or mouse inactivity."
+                    "5.1 Version Control: All changes to master quality documents must be tracked using sequential version numbers. "
+                    "For New Animal Drug Applications (NADA), all associated validation protocols and stability records must be version-controlled in accordance with NADA filing regulations."
                 )
-                citations = ["21 CFR Part 11.10(g)", "21 CFR Part 11.10(b)"]
-                rationale = (
-                    "Updates timeout limits to comply with the 15-minute mandate "
-                    "and adds MFA enforcement requirements for GxP access."
-                )
+                citations = ["21 CFR Part 514.1", "21 CFR Part 514.8"]
+                rationale = "Aligns document version controls with New Animal Drug Application (NADA) record keeping requirements."
+
+            # 2.5 General Fallback (extracting terms dynamically)
             else:
-                original_text = "Standard Operating Procedure template placeholder text."
-                proposed_text = (
-                    "Standard Operating Procedure template placeholder text. "
-                    "Revised in accordance with standard guidance rules."
+                original_text = (
+                    "4.1 Document Creation: Standard Operating Procedures (SOPs) are drafted by subject matter experts "
+                    "to document critical business activities."
                 )
-                citations = ["21 CFR Part 11.10"]
-                rationale = "General alignment with quality standard requirements."
+                proposed_text = (
+                    f"4.1 Document Creation: Standard Operating Procedures (SOPs) are drafted by subject matter experts. "
+                    f"All operational quality procedures must be updated to align with the regulatory changes under "
+                    f"the updated FDA guidance regarding: {reg_title}."
+                )
+                citations = ["21 CFR Part 11", "21 CFR Part 211"]
+                rationale = f"General revision to incorporate FDA guidelines for: {reg_title}."
+
 
             fields = response_model.model_fields
             mock_dict: Dict[str, Any] = {}

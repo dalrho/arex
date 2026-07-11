@@ -161,6 +161,20 @@ def assess_compliance_impact(
 
     # 5. Compile and serialize final affected documents list
     affected_docs_list = []
+
+    # In offline/demo mode, the vector similarity threshold is never met (scores ~0.02),
+    # so docs is empty. We fall back to loading all org documents and use the LLM
+    # explanations to determine which ones need revision.
+    from app.ai.llm_client import llm_client as _llm_client_ref
+    is_offline = _llm_client_ref.is_offline_mode()
+    if not docs and is_offline:
+        all_org_docs = db.query(Document).filter(Document.organization_id == organization_id).all()
+        # Build a dummy unique_docs entry for each so the loop below works
+        for d in all_org_docs:
+            if d.id not in unique_docs:
+                unique_docs[d.id] = {"max_score": 0.0, "text_snippet": ""}
+        docs = all_org_docs
+
     # Match the LLM explanations back to actual db documents
     for doc in docs:
         # Check if the document was marked as affected by the LLM (case-insensitive name check)
@@ -174,12 +188,18 @@ def assess_compliance_impact(
                 break
         
         # If the LLM didn't return an explanation but the chunk was a strong vector match,
-        # we still flag it as affected with a default explanation
-        if explanation is None and matched_doc_ids:
+        # we still flag it as affected with a default explanation.
+        # In offline mode, we rely strictly on the LLM explanations dict to determine
+        # which files actually need revision — skip any doc not explicitly listed.
+        if explanation is None and matched_doc_ids and not is_offline:
             explanation = (
                 f"SOP section conflicts with new guidelines on {regulation.title}. "
                 f"Requires review of authentication/access mechanisms."
             )
+
+        # In offline mode, only include documents the mock LLM explicitly flagged as needing revision
+        if explanation is None and is_offline:
+            continue
 
         fname_lower = doc.filename.lower()
         if "sop" in fname_lower:

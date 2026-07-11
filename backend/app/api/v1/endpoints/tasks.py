@@ -197,58 +197,236 @@ def generate_tasks_for_approved_drafts(
 
 
 
+def format_task_as_adf(description: str, department: str, priority: str, status: str, regulation_id: str) -> dict:
+    """
+    Formats task metadata and description into a fully structured Atlassian Document Format (ADF) payload.
+    """
+    content = []
+    
+    # 1. Main task description paragraph
+    if description:
+        for line in description.split("\n"):
+            if line.strip():
+                content.append({
+                    "type": "paragraph",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": line
+                        }
+                    ]
+                })
+            else:
+                content.append({
+                    "type": "paragraph",
+                    "content": []
+                })
+    
+    # 2. Add a divider line (rule)
+    content.append({
+        "type": "rule"
+    })
+    
+    # 3. Heading for Metadata
+    content.append({
+        "type": "heading",
+        "attrs": {
+            "level": 3
+        },
+        "content": [
+            {
+                "type": "text",
+                "text": "Task Metadata"
+            }
+        ]
+    })
+    
+    # 4. Bullet list for details
+    metadata_items = [
+        ("Department", department),
+        ("Priority", priority),
+        ("Status", status),
+        ("Regulatory Traceability ID", str(regulation_id))
+    ]
+    
+    list_items = []
+    for label, val in metadata_items:
+        list_items.append({
+            "type": "listItem",
+            "content": [
+                {
+                    "type": "paragraph",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": f"{label}: ",
+                            "marks": [{"type": "strong"}]
+                        },
+                        {
+                            "type": "text",
+                            "text": val
+                        }
+                    ]
+                }
+            ]
+        })
+        
+    content.append({
+        "type": "bulletList",
+        "content": list_items
+    })
+    
+    return {
+        "version": 1,
+        "type": "doc",
+        "content": content
+    }
+
+
 @router.post("/sync-jira")
 def sync_tasks_to_jira(db: Session = Depends(get_db)) -> Any:
     """
-    Push all approved implementation tasks to the Jira API (mocked).
+    Push all approved implementation tasks to the Jira API.
+    If Jira credentials are not configured, runs in simulated local mode.
     """
+    from app.core.config import settings
+    import httpx
+
+    # Fetch all tasks that have status TODO, IN_PROGRESS, or DONE
     approved_tasks = db.query(ImplementationTask).filter(
         ImplementationTask.status.in_(["TODO", "IN_PROGRESS", "DONE"])
     ).all()
-    
-    payload = {
-        "tasks": [
-            {
-                "id": str(task.id),
-                "title": task.title,
-                "description": task.description,
-                "department": task.department,
-                "priority": task.priority,
-                "status": task.status
+
+    if not approved_tasks:
+        return {
+            "message": "No approved tasks to sync.",
+            "jira_response": {"status": "skipped", "synced_count": 0}
+        }
+
+    # Check if Jira settings are configured
+    jira_configured = (
+        settings.JIRA_URL and settings.JIRA_URL.strip() and
+        settings.JIRA_EMAIL and settings.JIRA_EMAIL.strip() and
+        settings.JIRA_API_TOKEN and settings.JIRA_API_TOKEN.strip()
+    )
+
+    synced_keys = []
+    failed_count = 0
+    simulated = False
+
+    if jira_configured:
+        # Real Jira integration
+        project_key = (settings.JIRA_PROJECT_KEY or "AREX").strip()
+        jira_base_url = settings.JIRA_URL.strip().rstrip("/")
+        create_issue_url = f"{jira_base_url}/rest/api/3/issue"
+
+        for task in approved_tasks:
+            # Skip if already synced
+            if task.jira_issue_key:
+                synced_keys.append(task.jira_issue_key)
+                continue
+
+            # Prepare Jira create issue payload using ADF format for description
+            payload = {
+                "fields": {
+                    "project": {
+                        "key": project_key
+                    },
+                    "summary": f"[AREX Compliance] {task.title}",
+                    "description": format_task_as_adf(
+                        task.description,
+                        task.department,
+                        task.priority,
+                        task.status,
+                        task.regulation_id
+                    ),
+                    "issuetype": {
+                        "name": "Task"
+                    }
+                }
             }
-            for task in approved_tasks
-        ]
-    }
-    
-    # Attempt to post to our local mock endpoint
-    import httpx
-    try:
-        # Resolve to backend container address if running in docker-compose, fallback to localhost
-        url = "http://backend:8000/api/v1/tasks/jira-mock-endpoint"
-        response = httpx.post(url, json=payload, timeout=2.0)
-        jira_response = response.json()
-    except Exception:
-        try:
-            url = "http://localhost:8000/api/v1/tasks/jira-mock-endpoint"
-            response = httpx.post(url, json=payload, timeout=2.0)
-            jira_response = response.json()
-        except Exception:
-            jira_response = {"status": "success", "synced_count": len(approved_tasks)}
+
+            try:
+                # Basic Auth
+                response = httpx.post(
+                    create_issue_url,
+                    json=payload,
+                    auth=(settings.JIRA_EMAIL.strip(), settings.JIRA_API_TOKEN.strip()),
+                    timeout=5.0
+                )
+                if response.status_code in [200, 201]:
+                    res_data = response.json()
+                    issue_key = res_data.get("key")
+                    if issue_key:
+                        task.jira_issue_key = issue_key
+                        db.add(task)
+                        synced_keys.append(issue_key)
+                    else:
+                        failed_count += 1
+                else:
+                    logger.error(f"Jira API returned {response.status_code}: {response.text}")
+                    failed_count += 1
+            except Exception as e:
+                logger.error(f"Jira API connection error: {e}")
+                failed_count += 1
         
+        db.commit()
+        jira_response = {
+            "status": "success",
+            "synced_count": len(synced_keys),
+            "keys": synced_keys,
+            "failed_count": failed_count,
+            "mode": "live"
+        }
+        msg = f"Successfully synced {len(synced_keys)} tasks to Jira Cloud."
+        if failed_count > 0:
+            msg += f" ({failed_count} tasks failed to sync)."
+    else:
+        # Simulated local mode
+        simulated = True
+        sim_index = 101
+        for task in approved_tasks:
+            if not task.jira_issue_key:
+                project_key = (settings.JIRA_PROJECT_KEY or "AREX").strip()
+                task.jira_issue_key = f"{project_key}-{sim_index}"
+                db.add(task)
+                sim_index += 1
+            synced_keys.append(task.jira_issue_key)
+        
+        db.commit()
+        jira_response = {
+            "status": "success",
+            "synced_count": len(approved_tasks),
+            "keys": synced_keys,
+            "mode": "simulated"
+        }
+        msg = (
+            f"Local simulated sync completed. Synced {len(approved_tasks)} tasks "
+            f"under project '{settings.JIRA_PROJECT_KEY or 'AREX'}'. Configure JIRA_URL, "
+            f"JIRA_EMAIL, and JIRA_API_TOKEN in your .env file to enable live sync to Atlassian."
+        )
+
+    # Auditing
     from app.core.audit import add_audit_event
+    from app.models.regulation_update import RegulationUpdate
     reg_ids = list(set([task.regulation_id for task in approved_tasks if task.regulation_id]))
     for rid in reg_ids:
-        add_audit_event(db, rid, "tasks_synchronized_to_jira", f"Synchronized approved implementation tasks to Jira.")
-        # Also let's update regulation status to Implementation Complete/Closed if relevant
+        add_audit_event(
+            db, 
+            rid, 
+            "tasks_synchronized_to_jira", 
+            f"Synchronized approved implementation tasks to Jira (Mode: {'Simulated' if simulated else 'Live'}). Keys: {', '.join(synced_keys)}"
+        )
+        
         reg = db.query(RegulationUpdate).filter(RegulationUpdate.id == rid).first()
-        if reg:
+        if reg and reg.status != "Closed":
             reg.status = "Closed"
             db.add(reg)
             db.commit()
             add_audit_event(db, rid, "case_closed", "Compliance Case closed automatically after task synchronization.")
 
     return {
-        "message": f"Successfully synchronized {len(approved_tasks)} approved tasks to Jira.",
+        "message": msg,
         "jira_response": jira_response
     }
 

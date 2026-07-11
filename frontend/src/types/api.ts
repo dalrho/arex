@@ -128,6 +128,8 @@ export interface TaskResponse {
   priority: string;
   status: TaskStatus | string;
   created_at: string;
+  jira_issue_key?: string | null;
+  jira_issue_url?: string | null;
 }
 
 export interface TaskCreatePayload {

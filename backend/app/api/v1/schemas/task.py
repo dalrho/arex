@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, computed_field
 
 class TaskCreate(BaseModel):
     regulation_id: uuid.UUID
@@ -28,6 +28,15 @@ class TaskResponse(BaseModel):
     priority: str
     status: str
     created_at: datetime
+    jira_issue_key: Optional[str] = None
+
+    @computed_field
+    @property
+    def jira_issue_url(self) -> Optional[str]:
+        from app.core.config import settings
+        if self.jira_issue_key and settings.JIRA_URL:
+            return f"{settings.JIRA_URL.rstrip('/')}/browse/{self.jira_issue_key}"
+        return None
 
     class Config:
         from_attributes = True

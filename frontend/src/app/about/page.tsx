@@ -129,7 +129,7 @@ export default function AboutPage() {
       <div className="mx-auto max-w-4xl space-y-16 px-6 py-12 md:py-16">
         {/* Hero */}
         <section className="space-y-6 text-center">
-          <div className="opacity-0 motion-safe:animate-scale-in">
+          <div className="motion-safe:opacity-0 motion-safe:animate-scale-in">
             <Image
               src={BRAND_LOGO_SRC}
               alt="AREX"
@@ -139,11 +139,11 @@ export default function AboutPage() {
               className="mx-auto h-auto w-40 object-contain shadow-2xl shadow-blue-950/40 motion-safe:animate-subtle-float motion-safe:[animation-delay:700ms] md:w-48"
             />
           </div>
-          <div className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-800/50 px-3 py-1 text-xs font-semibold tracking-wide text-brand-100 opacity-0 motion-safe:animate-fade-in-up motion-safe:[animation-delay:100ms]">
+          <div className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-800/50 px-3 py-1 text-xs font-semibold tracking-wide text-brand-100 motion-safe:opacity-0 motion-safe:animate-fade-in-up motion-safe:[animation-delay:100ms]">
             <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
             FDA 21 CFR Part 11 Regulatory Intelligence
           </div>
-          <p className="mx-auto max-w-2xl text-lg text-slate-300 opacity-0 motion-safe:animate-fade-in-up motion-safe:[animation-delay:300ms]">
+          <p className="mx-auto max-w-2xl text-lg text-slate-300 motion-safe:opacity-0 motion-safe:animate-fade-in-up motion-safe:[animation-delay:300ms]">
             AREX is a regulatory intelligence platform that automates compliance
             mapping for FDA 21 CFR Part 11—enforcing safety-critical compliance through
             decoupled agentic LLM remediation and deterministic database audit logs.
