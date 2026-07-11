@@ -110,13 +110,28 @@ def submit_approval_decision(
             doc.version += 1
             doc.parsed_text = draft.proposed_revision
             
-            # Sync to physical storage: write the new version to a separate text file
-            versioned_file_path = os.path.join("/app/storage", f"{doc.id}_v{doc.version}.txt")
+            # Sync to physical storage: apply remediation while preserving formatting
+            import os
+            from app.services.document_modifier import apply_remediation
+            
+            _, ext = os.path.splitext(doc.file_path.lower())
+            versioned_file_path = os.path.join("/app/storage", f"{doc.id}_v{doc.version}{ext}")
+            
             try:
+                apply_remediation(
+                    original_file_path=doc.file_path, 
+                    new_file_path=versioned_file_path, 
+                    proposed_text=draft.proposed_revision, 
+                    diff_content=draft.diff_content or {}
+                )
+                # Update the main document's file path to point to the latest version
+                doc.file_path = versioned_file_path
+            except Exception:
+                # Fallback to saving as txt if the application logic fails completely
+                versioned_file_path = os.path.join("/app/storage", f"{doc.id}_v{doc.version}.txt")
                 with open(versioned_file_path, "w", encoding="utf-8") as f:
                     f.write(draft.proposed_revision)
-            except OSError:
-                versioned_file_path = doc.file_path
+                doc.file_path = versioned_file_path
 
             # Create document version history entry
             reg = db.query(RegulationUpdate).filter(RegulationUpdate.id == draft.regulation_id).first()
@@ -127,7 +142,7 @@ def submit_approval_decision(
                 id=uuid.uuid4(),
                 document_id=doc.id,
                 version=doc.version,
-                filename=doc.filename,
+                filename=f"{os.path.splitext(doc.filename)[0]}_v{doc.version}{os.path.splitext(doc.filename)[1]}",
                 file_path=versioned_file_path,
                 parsed_text=draft.proposed_revision,
                 reason_for_revision=reason,
