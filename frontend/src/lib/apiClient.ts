@@ -88,7 +88,27 @@ async function parseError(res: Response): Promise<ApiError> {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, init);
+  const mergedInit: RequestInit = {
+    ...init,
+    cache: "no-store",
+  };
+  
+  if (mergedInit.headers) {
+    mergedInit.headers = {
+      ...mergedInit.headers,
+      "Cache-Control": "no-cache, no-store, must-revalidate",
+      "Pragma": "no-cache",
+      "Expires": "0",
+    };
+  } else {
+    mergedInit.headers = {
+      "Cache-Control": "no-cache, no-store, must-revalidate",
+      "Pragma": "no-cache",
+      "Expires": "0",
+    };
+  }
+
+  const res = await fetch(`${API_BASE}${path}`, mergedInit);
   if (!res.ok) throw await parseError(res);
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
