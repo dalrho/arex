@@ -11,6 +11,8 @@ import type {
   TaskCreatePayload,
   TaskResponse,
   TaskUpdatePayload,
+  DocumentVersionResponse,
+  DocumentAnnotationResponse,
 } from "@/types/api";
 
 export interface AIStatusResponse {
@@ -320,4 +322,31 @@ export function getAdminStats(): Promise<DataStats> {
 
 export function resetApplicationData(): Promise<ResetResponse> {
   return sendJson<ResetResponse>("/admin/reset", "POST", { confirmation: "RESET" });
+}
+
+export function listDocumentVersions(documentId: string): Promise<DocumentVersionResponse[]> {
+  return getJson(`/documents/${documentId}/versions`);
+}
+
+export async function fetchDocumentVersionBlob(id: string, version: number): Promise<Blob> {
+  const res = await fetch(`${API_BASE}/documents/${id}/versions/${version}/download`, {
+    headers: buildHeaders(),
+  });
+  if (!res.ok) throw await parseError(res);
+  return res.blob();
+}
+
+export async function downloadDocumentVersion(id: string, version: number, filename: string): Promise<void> {
+  triggerBlobDownload(await fetchDocumentVersionBlob(id, version), filename);
+}
+
+export function getDocumentAnnotations(documentId: string): Promise<DocumentAnnotationResponse[]> {
+  return getJson(`/documents/${documentId}/annotations`);
+}
+
+export function getDocumentVersionAnnotations(
+  documentId: string,
+  versionNumber: number
+): Promise<DocumentAnnotationResponse[]> {
+  return getJson(`/documents/${documentId}/versions/${versionNumber}/annotations`);
 }

@@ -110,6 +110,11 @@ def submit_approval_decision(
             doc.version += 1
             doc.parsed_text = draft.proposed_revision
             
+            # Fetch regulation for metadata context
+            reg = db.query(RegulationUpdate).filter(RegulationUpdate.id == draft.regulation_id).first()
+            reg_title = reg.title if reg else "FDA Regulation Update"
+            reason = f"Remediated due to regulation update: {reg_title}"
+            
             # Sync to physical storage: apply remediation while preserving formatting
             import os
             from app.services.document_modifier import apply_remediation
@@ -122,7 +127,9 @@ def submit_approval_decision(
                     original_file_path=doc.file_path, 
                     new_file_path=versioned_file_path, 
                     proposed_text=draft.proposed_revision, 
-                    diff_content=draft.diff_content or {}
+                    diff_content=draft.diff_content or {},
+                    justification=draft.explanation,
+                    regulation_reference=reg_title
                 )
                 # Update the main document's file path to point to the latest version
                 doc.file_path = versioned_file_path
@@ -134,10 +141,6 @@ def submit_approval_decision(
                 doc.file_path = versioned_file_path
 
             # Create document version history entry
-            reg = db.query(RegulationUpdate).filter(RegulationUpdate.id == draft.regulation_id).first()
-            reg_title = reg.title if reg else "FDA Regulation Update"
-            reason = f"Remediated due to regulation update: {reg_title}"
-
             db_version = DocumentVersion(
                 id=uuid.uuid4(),
                 document_id=doc.id,
