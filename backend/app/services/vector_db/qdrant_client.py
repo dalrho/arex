@@ -12,7 +12,22 @@ class VectorDBClient:
         # Fallback to localhost if connecting from host context in scripts.
         self.url = settings.QDRANT_URL
         self.client = RealQdrantClient(url=self.url)
-        self.collection_name = "arex_docs"
+        self._initialized_collections = set()
+
+    @property
+    def collection_name(self) -> str:
+        mode = settings.AI_MODE.strip().lower()
+        if mode == "developer":
+            return "documents_gemini"
+        elif mode == "hackathon":
+            return "documents_fireworks"
+        return "arex_docs"
+
+    def _ensure_collection(self) -> None:
+        col = self.collection_name
+        if col not in self._initialized_collections:
+            self.init_collection(force_recreate=False)
+            self._initialized_collections.add(col)
 
     def init_collection(self, force_recreate: bool = False) -> None:
         """
@@ -62,6 +77,7 @@ class VectorDBClient:
         Upserts document chunks into Qdrant.
         chunks: list of dicts: [{"text": str, "vector": list[float], "chunk_index": int}]
         """
+        self._ensure_collection()
         try:
             points = []
             for chunk in chunks:
@@ -88,6 +104,7 @@ class VectorDBClient:
         """
         Searches for semantically similar chunks belonging to the given organization.
         """
+        self._ensure_collection()
         try:
             # Enforce organization isolation using payload filtering
             query_filter = qdrant_models.Filter(
@@ -124,6 +141,7 @@ class VectorDBClient:
         """
         Deletes all vector points associated with a specific document.
         """
+        self._ensure_collection()
         try:
             self.client.delete(
                 collection_name=self.collection_name,

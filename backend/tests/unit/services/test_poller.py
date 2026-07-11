@@ -50,7 +50,7 @@ def test_poll_fda_regulations(mock_sleep, mock_get, db_session):
 
     mock_html_response = MagicMock()
     mock_html_response.status_code = 200
-    mock_html_response.text = "<html><body><h1>FDA Rules on SOPs</h1><p>Compliance is mandatory.</p></body></html>"
+    mock_html_response.text = "<html><body><h1>FDA Rules on SOPs</h1><p>Compliance is mandatory. This is a longer text designed to exceed the 200-character threshold so that the body html is accepted instead of falling back to the abstract. Let us make sure there are plenty of characters in this text block so that the length is way over 250 or even 300 characters.</p></body></html>"
 
     # Side effect for the three httpx.get requests
     mock_get.side_effect = [

@@ -258,7 +258,7 @@ def reset_application_data(
             counts["vector_collections_deleted"] = deleted_collections
             logger.info(
                 f"Qdrant reset complete: deleted {deleted_collections}, "
-                "recreated 'arex_docs'."
+                f"recreated '{vector_db_client.collection_name}'."
             )
         except Exception as e:
             logger.warning(f"Could not reset Qdrant collections: {e}")
