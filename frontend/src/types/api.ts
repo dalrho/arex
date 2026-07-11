@@ -162,3 +162,27 @@ export interface ResetResponse {
   message: string;
   deleted: Record<string, number>;
 }
+
+export interface DocumentVersionResponse {
+  id: string;
+  document_id: string;
+  version: number;
+  filename: string;
+  file_path: string;
+  parsed_text: string;
+  reason_for_revision: string;
+  created_at: string;
+}
+
+export interface DocumentAnnotationResponse {
+  id: string;
+  page: number;
+  type: string;
+  title: string;
+  raw_content: string;
+  section: string;
+  original_text: string;
+  proposed_text: string;
+  justification: string;
+  regulation_reference: string;
+}

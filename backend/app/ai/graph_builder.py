@@ -18,23 +18,23 @@ class AgentState(TypedDict):
     regulation_id: str
     organization_id: str
     raw_content: str
-    
+
     # Node outputs: Regulatory Intelligence
     relevant: Optional[bool]
     category: Optional[str]
     urgency: Optional[str]
     affected_business_areas: Optional[List[str]]
     rationale: Optional[str]
-    
+
     # Node outputs: Compliance Impact Assessment
     risk_score: Optional[float]
     impact_level: Optional[str]
     affected_departments: Optional[List[str]]
     matched_document_ids: Optional[List[str]]
-    
+
     # Node outputs: Remediation Drafts
     remediation_draft_ids: Optional[List[str]]
-    
+
     # Node outputs: Implementation Tasks
     task_ids: Optional[List[str]]
 
@@ -47,7 +47,7 @@ def run_compliance_impact(state: AgentState) -> Dict[str, Any]:
     logger.info("Executing Compliance Impact Assessment Node...")
     regulation_id = uuid.UUID(state["regulation_id"])
     organization_id = uuid.UUID(state["organization_id"])
-    
+
     db = SessionLocal()
     try:
         assessment = assess_compliance_impact(
@@ -83,43 +83,104 @@ def route_relevance(state: AgentState) -> str:
     return "end"
 
 
-# Setup the graph workflow
-workflow = StateGraph(AgentState)
+# ---------------------------------------------------------------------------
+# Internal graph factory — produces a fresh compiled graph with a given conn
+# ---------------------------------------------------------------------------
 
-# Add all agents and processing nodes
-workflow.add_node("regulatory_intelligence", run_regulatory_intelligence)
-workflow.add_node("compliance_impact", run_compliance_impact)
-workflow.add_node("remediation", run_remediation_agent)
-workflow.add_node("implementation_task", run_implementation_agent)
+def _build_graph(conn: sqlite3.Connection):
+    """
+    Compile a fresh LangGraph workflow backed by the provided SQLite connection.
+    Returns (compiled_graph, memory_checkpointer).
+    """
+    workflow = StateGraph(AgentState)
 
-# Configure flow entrypoint
-workflow.set_entry_point("regulatory_intelligence")
+    # Add all agents and processing nodes
+    workflow.add_node("regulatory_intelligence", run_regulatory_intelligence)
+    workflow.add_node("compliance_impact", run_compliance_impact)
+    workflow.add_node("remediation", run_remediation_agent)
+    workflow.add_node("implementation_task", run_implementation_agent)
 
-# Add conditional routing
-workflow.add_conditional_edges(
-    "regulatory_intelligence",
-    route_relevance,
-    {
-        "compliance_impact": "compliance_impact",
-        "end": END
-    }
-)
+    # Configure flow entrypoint
+    workflow.set_entry_point("regulatory_intelligence")
 
-# Connect remaining pipelines
-workflow.add_edge("compliance_impact", "remediation")
-workflow.add_edge("remediation", "implementation_task")
-workflow.add_edge("implementation_task", END)
+    # Add conditional routing
+    workflow.add_conditional_edges(
+        "regulatory_intelligence",
+        route_relevance,
+        {
+            "compliance_impact": "compliance_impact",
+            "end": END
+        }
+    )
 
-# Set up SQLite checkpointer persistence
-storage_dir = "/app/storage"
-os.makedirs(storage_dir, exist_ok=True)
-db_path = os.path.join(storage_dir, "checkpoints.sqlite")
+    # Connect remaining pipelines
+    workflow.add_edge("compliance_impact", "remediation")
+    workflow.add_edge("remediation", "implementation_task")
+    workflow.add_edge("implementation_task", END)
 
-conn = sqlite3.connect(db_path, check_same_thread=False)
-memory = SqliteSaver(conn=conn)
+    memory = SqliteSaver(conn=conn)
+    return workflow.compile(checkpointer=memory), memory
 
-# Compile LangGraph orchestrator
-graph = workflow.compile(checkpointer=memory)
+
+# ---------------------------------------------------------------------------
+# Module-level singletons — replaced in-place on reset
+# ---------------------------------------------------------------------------
+
+_STORAGE_DIR = "/app/storage"
+_DB_PATH = os.path.join(_STORAGE_DIR, "checkpoints.sqlite")
+
+os.makedirs(_STORAGE_DIR, exist_ok=True)
+
+_conn: sqlite3.Connection = sqlite3.connect(_DB_PATH, check_same_thread=False)
+graph, _memory = _build_graph(_conn)
+
+
+# ---------------------------------------------------------------------------
+# Public reset helper — called by the admin reset endpoint
+# ---------------------------------------------------------------------------
+
+def reset_graph_checkpoints() -> None:
+    """
+    Perform a complete LangGraph checkpoint reset:
+
+    1. Close the current open SQLite connection (releases the file lock).
+    2. Delete the checkpoints.sqlite file from disk.
+    3. Open a new SQLite connection and recompile the graph.
+
+    After this call, the module-level ``graph`` object is a fresh instance with
+    no prior thread checkpoints.  Uploading the same regulation again will
+    trigger a completely new AI pipeline run.
+    """
+    global _conn, _memory, graph
+
+    logger.warning("[GraphBuilder] Resetting LangGraph checkpoint store...")
+
+    # 1. Close the existing connection so the file is no longer locked
+    try:
+        _conn.close()
+        logger.info("[GraphBuilder] Closed existing checkpoint SQLite connection.")
+    except Exception as e:
+        logger.warning(f"[GraphBuilder] Could not close checkpoint connection: {e}")
+
+    # 2. Delete the on-disk checkpoint file
+    if os.path.isfile(_DB_PATH):
+        try:
+            os.remove(_DB_PATH)
+            logger.info(f"[GraphBuilder] Deleted checkpoint file: {_DB_PATH}")
+        except OSError as e:
+            logger.warning(f"[GraphBuilder] Could not delete checkpoint file: {e}")
+    else:
+        logger.info("[GraphBuilder] Checkpoint file did not exist — nothing to delete.")
+
+    # 3. Re-open connection and rebuild the compiled graph
+    _conn = sqlite3.connect(_DB_PATH, check_same_thread=False)
+    graph, _memory = _build_graph(_conn)
+    logger.info("[GraphBuilder] LangGraph graph recompiled with a clean checkpoint store.")
+
+
+# ---------------------------------------------------------------------------
+# Public pipeline entry point
+# ---------------------------------------------------------------------------
 
 def trigger_agent_pipeline(
     regulation_id: str,
@@ -128,11 +189,11 @@ def trigger_agent_pipeline(
 ) -> Dict[str, Any]:
     """
     Executes the compiled LangGraph workflow synchronously.
-    Thread configuration tracks checkpoint states.
+    Thread configuration tracks checkpoint states per regulation.
     """
     thread_id = f"reg_{regulation_id}"
     config = {"configurable": {"thread_id": thread_id}}
-    
+
     initial_state = {
         "regulation_id": regulation_id,
         "organization_id": organization_id,
@@ -149,7 +210,7 @@ def trigger_agent_pipeline(
         "remediation_draft_ids": [],
         "task_ids": []
     }
-    
+
     logger.info(f"Triggering LangGraph pipeline for Thread: {thread_id}")
     final_state = graph.invoke(initial_state, config=config)
     return final_state

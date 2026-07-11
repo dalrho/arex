@@ -39,7 +39,6 @@ import type {
 } from "@/types/api";
 
 const MIN_ASSESSMENT_ANIMATION_MS = 6500;
-const RAIL_DRAFT_CACHE_KEY = "arex_remediation_rail_drafts";
 
 function hostFor(url: string): string {
   try {
@@ -79,46 +78,11 @@ function hasCompletedAssessment(
   ].includes(normalizedStatus(regulation.status));
 }
 
-function mergeRemediationDrafts(
-  current: RemediationResponse[],
-  incoming: RemediationResponse[]
-): RemediationResponse[] {
-  const draftsByRegulation = new Map(current.map((draft) => [draft.regulation_id, draft]));
-
-  incoming.forEach((draft) => {
-    draftsByRegulation.set(draft.regulation_id, draft);
-  });
-
-  return Array.from(draftsByRegulation.values());
-}
-
-function readCachedRailDrafts(): RemediationResponse[] {
-  if (typeof window === "undefined") return [];
-
-  try {
-    const raw = window.sessionStorage.getItem(RAIL_DRAFT_CACHE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as RemediationResponse[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeCachedRailDrafts(drafts: RemediationResponse[]): void {
-  if (typeof window === "undefined") return;
-
-  try {
-    window.sessionStorage.setItem(RAIL_DRAFT_CACHE_KEY, JSON.stringify(drafts));
-  } catch {
-    // best-effort
-  }
-}
 
 export default function RemediationReviewPage({ params }: { params: { id: string } }) {
   const router = useRouter();
   const [drafts, setDrafts] = useState<RemediationResponse[]>([]);
-  const [railDrafts, setRailDrafts] = useState<RemediationResponse[]>(() => readCachedRailDrafts());
+  const [railDrafts, setRailDrafts] = useState<RemediationResponse[]>([]);
   const [documentsMap, setDocumentsMap] = useState<Record<string, DocumentResponse>>({});
   const [regulation, setRegulation] = useState<RegulationResponse | null>(null);
   const [regulations, setRegulations] = useState<RegulationResponse[]>([]);
@@ -151,11 +115,7 @@ export default function RemediationReviewPage({ params }: { params: { id: string
   const loadRailDrafts = useCallback(async () => {
     try {
       const rows = await listRemediations();
-      setRailDrafts((current) => {
-        const next = mergeRemediationDrafts(current, rows);
-        writeCachedRailDrafts(next);
-        return next;
-      });
+      setRailDrafts(rows);
     } catch {
       // ignore
     }
@@ -188,12 +148,7 @@ export default function RemediationReviewPage({ params }: { params: { id: string
       const allDrafts = await listRemediations(initialDraft.regulation_id);
       setDrafts(allDrafts);
 
-      // Cache all rail drafts
-      setRailDrafts((current) => {
-        const next = mergeRemediationDrafts(current, allDrafts);
-        writeCachedRailDrafts(next);
-        return next;
-      });
+      setRailDrafts(allDrafts);
 
       // Load documents for all drafts
       const docPromises = allDrafts.map((d) =>

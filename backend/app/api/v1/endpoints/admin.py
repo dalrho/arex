@@ -3,10 +3,18 @@ Admin endpoint — Data Management.
 
 Provides:
   GET  /admin/stats   — counts of all application data objects
-  POST /admin/reset   — wipes all application-generated data (requires confirmation)
+  POST /admin/reset   — wipes ALL workspace-specific data (requires confirmation)
+
+Reset Workspace guarantees a true "fresh installation" state:
+  - All Postgres records (regulations, documents, assessments, drafts, tasks, etc.)
+  - All uploaded files on disk (/app/storage/**)
+  - All Qdrant vector embeddings (collection is dropped and recreated)
+  - The LangGraph SQLite checkpoint store (checkpoints.sqlite)
+    → prevents the "already analyzed" false-positive on re-upload of same regulation
 """
 import logging
 import os
+import glob
 import shutil
 from typing import Any
 
@@ -26,6 +34,14 @@ from app.models.remediation_draft import RemediationDraft
 logger = logging.getLogger("arex.api.admin")
 
 router = APIRouter()
+
+# Storage root used by all file-writing endpoints
+_STORAGE_ROOT = "/app/storage"
+
+# Sub-paths that are recreated as empty directories after clearing
+_RECREATE_DIRS = [
+    os.path.join(_STORAGE_ROOT, "regulations"),
+]
 
 
 # ---------------------------------------------------------------------------
@@ -89,20 +105,43 @@ def reset_application_data(
     db: Session = Depends(get_db),
 ) -> Any:
     """
-    Permanently delete all application-generated data.
+    Permanently delete ALL workspace-specific data.
 
-    This removes:
-    - All regulations (FDA API and uploaded)
-    - All uploaded regulation PDFs from disk
-    - All uploaded SOP/QMS documents and their files
-    - All compliance impact assessments
-    - All remediation drafts
-    - All implementation tasks
-    - All approval records
-    - All document versions
-    - Vector DB collections are reset
+    The reset is intentionally exhaustive — every storage location that could
+    cause the system to treat a re-uploaded document as "already analyzed" is
+    cleared:
 
-    The reset leaves the application in a clean first-run state.
+    Database (Postgres)
+    -------------------
+    - approval_records
+    - implementation_tasks
+    - remediation_drafts
+    - impact_assessments
+    - document_versions
+    - documents
+    - regulation_updates  (includes the hash_value fingerprints used for
+                           duplicate detection — clearing these allows the
+                           same regulation PDF to be re-uploaded and
+                           fully re-analyzed)
+
+    File system (/app/storage)
+    --------------------------
+    - /app/storage/regulations/**  — uploaded regulation PDFs
+    - /app/storage/*.pdf|txt|docx  — uploaded company SOP/QMS documents
+    - /app/storage/*_v*.txt        — versioned approval files
+    - /app/storage/checkpoints.sqlite — LangGraph AI orchestration state
+
+    Vector database (Qdrant)
+    ------------------------
+    - The entire "arex_docs" collection is dropped and recreated empty.
+
+    LangGraph checkpoint store
+    --------------------------
+    - checkpoints.sqlite is deleted and the graph is recompiled from scratch.
+      Without this step, LangGraph's SqliteSaver retains per-thread state
+      that can cause the AI pipeline to skip re-analysis of regulations whose
+      thread_id (reg_<uuid>) it recognises from a prior run.
+
     Requires the caller to pass confirmation="RESET".
     """
     if payload.confirmation != "RESET":
@@ -111,12 +150,14 @@ def reset_application_data(
             detail='Confirmation value must be exactly "RESET".',
         )
 
-    logger.warning("Admin reset initiated — deleting all application data.")
+    logger.warning("Admin reset initiated — deleting ALL workspace data.")
 
     counts: dict[str, int] = {}
 
     try:
-        # Count before deletion for the response summary
+        # ------------------------------------------------------------------
+        # 1. Count everything before deletion (for the response summary)
+        # ------------------------------------------------------------------
         counts["approval_records"] = db.query(ApprovalRecord).count()
         counts["implementation_tasks"] = db.query(ImplementationTask).count()
         counts["remediation_drafts"] = db.query(RemediationDraft).count()
@@ -125,20 +166,9 @@ def reset_application_data(
         counts["documents"] = db.query(Document).count()
         counts["regulations"] = db.query(RegulationUpdate).count()
 
-        # Collect file paths before deletion so we can remove them from disk
-        doc_paths = [
-            d.file_path
-            for d in db.query(Document.file_path).all()
-            if d.file_path
-        ]
-        version_paths = [
-            v.file_path
-            for v in db.query(DocumentVersion.file_path).all()
-            if v.file_path
-        ]
-        all_paths = set(doc_paths + version_paths)
-
-        # Delete in foreign-key order
+        # ------------------------------------------------------------------
+        # 2. Delete all Postgres records (in FK-safe order)
+        # ------------------------------------------------------------------
         db.query(ApprovalRecord).delete(synchronize_session="fetch")
         db.query(ImplementationTask).delete(synchronize_session="fetch")
         db.query(RemediationDraft).delete(synchronize_session="fetch")
@@ -148,51 +178,107 @@ def reset_application_data(
         db.query(RegulationUpdate).delete(synchronize_session="fetch")
         db.commit()
 
-        logger.info("Database tables cleared.")
+        logger.info("All Postgres tables cleared (including regulation hash_value fingerprints).")
 
-        # Remove uploaded files from disk
-        deleted_files = 0
-        for path in all_paths:
-            try:
-                if os.path.isfile(path):
-                    os.remove(path)
-                    deleted_files += 1
-            except OSError as e:
-                logger.warning(f"Could not remove file {path}: {e}")
+        # ------------------------------------------------------------------
+        # 3. Wipe the entire /app/storage directory
+        #    We clear all contents but keep the root directory itself and
+        #    recreate the required sub-directories as empty folders.
+        # ------------------------------------------------------------------
+        files_removed = 0
+        dirs_removed = 0
 
-        # Remove uploaded regulation PDFs directory
-        reg_storage_dir = "/app/storage/regulations"
-        if os.path.isdir(reg_storage_dir):
-            try:
-                shutil.rmtree(reg_storage_dir)
-                os.makedirs(reg_storage_dir, exist_ok=True)
-                logger.info("Regulation storage directory cleared.")
-            except OSError as e:
-                logger.warning(f"Could not clear regulation storage: {e}")
+        if os.path.isdir(_STORAGE_ROOT):
+            for entry in os.listdir(_STORAGE_ROOT):
+                entry_path = os.path.join(_STORAGE_ROOT, entry)
+                try:
+                    if os.path.isfile(entry_path) or os.path.islink(entry_path):
+                        os.remove(entry_path)
+                        files_removed += 1
+                        logger.debug(f"Removed file: {entry_path}")
+                    elif os.path.isdir(entry_path):
+                        shutil.rmtree(entry_path)
+                        dirs_removed += 1
+                        logger.debug(f"Removed directory: {entry_path}")
+                except OSError as e:
+                    logger.warning(f"Could not remove {entry_path}: {e}")
 
-        counts["files_removed"] = deleted_files
+        # Recreate required sub-directories
+        for dir_path in _RECREATE_DIRS:
+            os.makedirs(dir_path, exist_ok=True)
 
-        # Reset the Qdrant vector collection
+        counts["files_removed"] = files_removed
+        counts["dirs_removed"] = dirs_removed
+        logger.info(
+            f"Storage cleared: {files_removed} file(s) and {dirs_removed} directory/ies removed. "
+            f"Sub-directories recreated: {_RECREATE_DIRS}"
+        )
+
+        # ------------------------------------------------------------------
+        # 4. Reset LangGraph checkpoint store
+        #    Closes the open SQLite connection, deletes checkpoints.sqlite,
+        #    and recompiles the graph with a fresh empty store.
+        #    This prevents the "already analyzed" false-positive that occurs
+        #    when LangGraph resumes from a cached thread checkpoint.
+        # ------------------------------------------------------------------
         try:
-            from app.services.vector_db.qdrant_client import vector_db_client
-            vector_db_client.init_collection(force_recreate=True)
-            logger.info("Qdrant vector collection reset.")
-            counts["vector_collections_reset"] = 1
+            from app.ai.graph_builder import reset_graph_checkpoints
+            reset_graph_checkpoints()
+            counts["langgraph_checkpoints_reset"] = 1
+            logger.info("LangGraph checkpoint store reset successfully.")
         except Exception as e:
-            logger.warning(f"Could not reset Qdrant collection: {e}")
+            logger.warning(f"Could not reset LangGraph checkpoints: {e}")
+            counts["langgraph_checkpoints_reset"] = 0
+
+        # ------------------------------------------------------------------
+        # 5. Reset ALL Qdrant vector collections
+        #    Drops every collection in the vector DB (including stale ones
+        #    from previous backend versions, e.g. "sentinel_docs"), then
+        #    recreates the active "arex_docs" collection as empty.
+        # ------------------------------------------------------------------
+        try:
+            from qdrant_client import QdrantClient as RawQdrant
+            from app.core.config import settings
+            from app.services.vector_db.qdrant_client import vector_db_client
+
+            raw_client = RawQdrant(url=settings.QDRANT_URL)
+            all_collections = raw_client.get_collections().collections
+            deleted_collections = []
+            for col in all_collections:
+                try:
+                    raw_client.delete_collection(col.name)
+                    deleted_collections.append(col.name)
+                    logger.info(f"Deleted Qdrant collection: '{col.name}'")
+                except Exception as ce:
+                    logger.warning(f"Could not delete Qdrant collection '{col.name}': {ce}")
+
+            # Recreate the active collection
+            vector_db_client.init_collection(force_recreate=False)
+            counts["vector_collections_reset"] = len(deleted_collections)
+            counts["vector_collections_deleted"] = deleted_collections
+            logger.info(
+                f"Qdrant reset complete: deleted {deleted_collections}, "
+                "recreated 'arex_docs'."
+            )
+        except Exception as e:
+            logger.warning(f"Could not reset Qdrant collections: {e}")
             counts["vector_collections_reset"] = 0
 
-        logger.warning("Admin reset complete.")
+        logger.warning("Admin reset complete — workspace is in a clean first-run state.")
 
         return ResetResponse(
             status="success",
-            message="All application data has been permanently deleted. The application is in a clean first-run state.",
+            message=(
+                "All workspace data has been permanently deleted. "
+                "The application is in a clean first-run state. "
+                "Re-uploading the same regulation will trigger a completely new AI analysis."
+            ),
             deleted=counts,
         )
 
     except Exception as e:
         db.rollback()
-        logger.error(f"Reset failed: {e}")
+        logger.error(f"Reset failed: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Reset failed: {str(e)}",
