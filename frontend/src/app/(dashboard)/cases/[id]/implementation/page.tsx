@@ -261,6 +261,24 @@ function CaseImplementationPage({ params }: { params: { id: string } }) {
                                 <StatusBadge label={task.priority} tone={task.priority.toLowerCase() === "high" || task.priority.toLowerCase() === "critical" ? "red" : undefined} />
                               </div>
                               <p className="mt-2 text-xs text-slate-400 leading-relaxed">{task.description}</p>
+                              {task.jira_issue_key && (
+                                <div className="mt-3 flex items-center gap-2">
+                                  <span className="text-[10px] font-bold text-slate-500 uppercase">Jira Ticket:</span>
+                                  {task.jira_issue_url ? (
+                                    <a
+                                      href={task.jira_issue_url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-xs text-cyan-400 hover:text-cyan-300 font-bold hover:underline inline-flex items-center gap-1"
+                                    >
+                                      {task.jira_issue_key}
+                                      <span className="text-[9px]">↗</span>
+                                    </a>
+                                  ) : (
+                                    <span className="text-xs font-semibold text-slate-300">{task.jira_issue_key}</span>
+                                  )}
+                                </div>
+                              )}
                             </div>
 
                             <div className="flex items-center justify-between gap-3 border-t border-slate-800/80 pt-3 mt-1">

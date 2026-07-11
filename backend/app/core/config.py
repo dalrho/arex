@@ -57,6 +57,14 @@ class Settings(BaseSettings):
     GEMINI_EMBEDDING_MODEL: str = "gemini-embedding-001"
 
     # -----------------------------------------------------------------------
+    # Jira Integration Settings
+    # -----------------------------------------------------------------------
+    JIRA_URL: str = ""
+    JIRA_EMAIL: str = ""
+    JIRA_API_TOKEN: str = ""
+    JIRA_PROJECT_KEY: str = ""
+
+    # -----------------------------------------------------------------------
     # Legacy / Fallback LLM Settings (OpenAI-compatible providers)
     # These are used if GEMINI_API_KEY is not set but AI_MODE=online.
     # -----------------------------------------------------------------------

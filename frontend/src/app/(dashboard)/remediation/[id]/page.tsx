@@ -92,6 +92,16 @@ export default function RemediationReviewPage({ params }: { params: { id: string
   const [assessing, setAssessing] = useState(false);
   const [submittingIds, setSubmittingIds] = useState<Record<string, boolean>>({});
   const [message, setMessage] = useState<string | null>(null);
+
+  const relatedDocs = React.useMemo(() => {
+    return drafts.map((d) => {
+      const doc = documentsMap[d.sopId || d.document_id];
+      return {
+        id: d.sopId || d.document_id,
+        filename: doc ? doc.filename : "SOP Document",
+      };
+    });
+  }, [drafts, documentsMap]);
   
   // Edit modal state
   const [editOpen, setEditOpen] = useState(false);
@@ -359,7 +369,10 @@ export default function RemediationReviewPage({ params }: { params: { id: string
             )}
 
             {assessing ? (
-              <AssessmentLoadingView />
+              <AssessmentLoadingView 
+                regulationTitle={regulation?.title} 
+                documents={relatedDocs.length > 0 ? relatedDocs : undefined}
+              />
             ) : loading ? (
               <div className="mt-8 flex h-40 items-center justify-center gap-3 rounded-lg border border-slate-700 bg-[#081024] text-slate-400">
                 <Loader2 className="h-5 w-5 animate-spin" />

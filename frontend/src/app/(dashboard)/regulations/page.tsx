@@ -156,6 +156,19 @@ function RegulationsPage() {
     [regulations, openedId]
   );
 
+  const relatedDocs = useMemo(() => {
+    const activeImpact =
+      impact?.regulation_id === (selectedRailRegulation?.id || selected?.id)
+        ? impact
+        : selectedCaseImpact?.regulation_id === (selectedRailRegulation?.id || selected?.id)
+          ? selectedCaseImpact
+          : null;
+    return activeImpact?.affected_documents?.map((d: any) => ({
+      id: d.document_id,
+      filename: d.document_name || "SOP Document",
+    })) || [];
+  }, [impact, selectedCaseImpact, selectedRailRegulation, selected]);
+
   // Fetch existing case artifacts only when a case is explicitly opened.
   useEffect(() => {
     if (!openedId) {
@@ -397,7 +410,10 @@ function RegulationsPage() {
           </div>
         )}
         {assessing ? (
-          <AssessmentLoadingView />
+          <AssessmentLoadingView 
+            regulationTitle={selectedRailRegulation?.title || selected?.title} 
+            documents={relatedDocs.length > 0 ? relatedDocs : undefined}
+          />
         ) : !selected ? (
           <RegulationsHome
             welcomeName={getAccountDisplayName(user)}
