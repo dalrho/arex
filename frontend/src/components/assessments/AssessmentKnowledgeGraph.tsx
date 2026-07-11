@@ -69,11 +69,11 @@ function generateDynamicGraph(
   routeNodeIndexes.push(centerIndex);
 
   // Identify affected document IDs
-  const affectedIds = new Set((affectedDocuments.length > 0 ? affectedDocuments : allDocuments).map((d) => d.id));
+  const affectedIds = new Set(affectedDocuments.map((d) => d.id));
 
   // 2. Document nodes distributed on an outer shell representing ALL files on the website
   const numDocs = allDocuments.length;
-  
+
   for (let i = 0; i < numDocs; i++) {
     const doc = allDocuments[i];
     const theta = (i / numDocs) * Math.PI * 2;
@@ -471,6 +471,15 @@ export default function AssessmentKnowledgeGraph({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const lastReportedCountRef = useRef(-1);
+  const onProgressRef = useRef(onProgress);
+
+  // Keep onProgress updated in a ref to avoid resetting the render useEffect
+  useEffect(() => {
+    onProgressRef.current = onProgress;
+  }, [onProgress]);
+
+  const allDocsKey = JSON.stringify(allDocuments);
+  const affectedDocsKey = JSON.stringify(affectedDocuments);
 
   // Initialize nodes and links configurations based on all system files and affected files
   const { nodes: staticNodes, links: graphLinks, routeNodeIndexes } = useMemo(() => {
@@ -481,7 +490,7 @@ export default function AssessmentKnowledgeGraph({
       { id: "sop104", filename: "SOP-104.txt" },
     ];
     return generateDynamicGraph(resolvedAllDocs, affectedDocuments);
-  }, [allDocuments, affectedDocuments]);
+  }, [allDocsKey, affectedDocsKey]);
 
   // Keep a mutable reference of simulated physics nodes
   const physicsNodesRef = useRef<PhysicsNode[]>([]);
@@ -556,10 +565,11 @@ export default function AssessmentKnowledgeGraph({
       const litRouteNodeCount = Math.min(routeNodeIndexes.length, 1 + Math.floor(cycleTime / SEGMENT_SECONDS));
       const currentAffectedCount = Math.max(0, litRouteNodeCount - 1);
 
-      // Report current count back to loading panel
-      if (onProgress && currentAffectedCount !== lastReportedCountRef.current) {
+      // Report current count back to loading panel via ref
+      if (onProgressRef.current && currentAffectedCount !== lastReportedCountRef.current) {
         lastReportedCountRef.current = currentAffectedCount;
-        setTimeout(() => onProgress(currentAffectedCount), 0);
+        const callback = onProgressRef.current;
+        setTimeout(() => callback(currentAffectedCount), 0);
       }
 
       drawGraph(
@@ -600,7 +610,7 @@ export default function AssessmentKnowledgeGraph({
       cancelAnimationFrame(animationFrame);
       resizeObserver.disconnect();
     };
-  }, [active, graphLinks, routeNodeIndexes, onProgress]);
+  }, [active, graphLinks, routeNodeIndexes]);
 
   return (
     <div

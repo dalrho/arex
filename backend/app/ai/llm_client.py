@@ -344,18 +344,91 @@ class LLMClient:
             )
 
         elif "impact" in response_model.__name__.lower() or "assessment" in response_model.__name__.lower():
-            # Mock impact assessment response
-            risk_score = 0.85
-            impact_level = "High"
+            # Mock impact assessment response — dynamically determine which SOPs need revision
+            # based on keywords present in the regulation content, simulating a real LLM analysis.
+
+            # Determine risk profile from regulation text
+            is_high_risk = any(kw in combined_text for kw in [
+                "mfa", "multi-factor", "timeout", "session", "suspend", "recall", "withdrawal",
+                "penalty", "violation", "warning letter"
+            ])
+            risk_score = 0.85 if is_high_risk else 0.45
+            impact_level = "High" if is_high_risk else "Medium"
+
+            # Determine which SOPs need revision based on what the regulation touches
+            explanations: dict = {}
+
+            # SOP-101: Electronic Records & System Access Control
+            if any(kw in combined_text for kw in [
+                "mfa", "multi-factor", "timeout", "session", "password", "access control",
+                "login", "authentication", "lock", "user account", "system security",
+                "electronic record", "21 cfr part 11", "part 11"
+            ]):
+                explanations["SOP-101.txt"] = (
+                    "SOP-101 (Electronic Records and System Access Control) requires revision. "
+                    "The regulation introduces updated requirements for session security, access controls, "
+                    "or electronic record integrity that are not currently covered by this SOP."
+                )
+
+            # SOP-102: Electronic Signatures & Signing Authority
+            if any(kw in combined_text for kw in [
+                "signature", "signing", "sign", "electronic signature", "esignature",
+                "authority", "approval", "signatory", "wet signature", "binding"
+            ]):
+                explanations["SOP-102.txt"] = (
+                    "SOP-102 (Electronic Signatures and Signing Authority) requires revision. "
+                    "The regulation introduces new or updated requirements for electronic signature "
+                    "validation, signing authority, or signature binding that are not reflected in current procedures."
+                )
+
+            # SOP-103: Audit Trail & Record Integrity
+            if any(kw in combined_text for kw in [
+                "audit", "log", "trail", "record", "integrity", "traceability",
+                "change control", "modification", "history", "event log", "tamper"
+            ]):
+                explanations["SOP-103.txt"] = (
+                    "SOP-103 (Audit Trail and Record Integrity) requires revision. "
+                    "The regulation mandates stricter audit trail or record integrity requirements "
+                    "that go beyond what is currently specified in this SOP."
+                )
+
+            # SOP-104: Document Control & Version Management
+            if any(kw in combined_text for kw in [
+                "document", "version", "revision", "sop", "procedure", "lifecycle",
+                "archive", "retire", "control", "master", "effective date"
+            ]):
+                explanations["SOP-104.txt"] = (
+                    "SOP-104 (Document Control and Version Management) requires revision. "
+                    "The regulation introduces new document lifecycle, versioning, or archival "
+                    "requirements that are not addressed by the current document control procedures."
+                )
+
+            # Fallback: if no specific SOP matched, at minimum flag SOP-101 as the catch-all
+            if not explanations:
+                explanations["SOP-101.txt"] = (
+                    "SOP-101 requires general review and revision to ensure compliance with "
+                    "the updated regulation requirements."
+                )
+
+            # Determine affected departments
+            affected_departments = []
+            if "SOP-101.txt" in explanations:
+                affected_departments.extend(["IT", "Quality Assurance"])
+            if "SOP-102.txt" in explanations:
+                affected_departments.extend(["Quality Assurance", "Training"])
+            if "SOP-103.txt" in explanations:
+                affected_departments.extend(["Quality Assurance", "Engineering"])
+            if "SOP-104.txt" in explanations:
+                affected_departments.extend(["Quality Assurance", "Regulatory Affairs"])
+            affected_departments = list(dict.fromkeys(affected_departments))  # deduplicate
+
             rationale = (
-                "The new FDA amendment mandates Multi-Factor Authentication (MFA) and reduces the permissible idle "
-                "timeout limit to 15 minutes. Our current SOP-101 (Access Control) does not require MFA and permits "
-                "a 30-minute idle session timeout. This constitutes a high-priority compliance gap requiring immediate revision."
+                f"Impact analysis identified {len(explanations)} SOP(s) requiring revision to comply "
+                f"with the new regulation. The regulation introduces requirements in areas including: "
+                + ", ".join(explanations.keys())
+                + ". These documents must be reviewed and updated before the regulation effective date."
             )
-            affected_departments = ["IT", "Quality Assurance", "Engineering"]
-            explanations = {
-                "SOP-101.txt": "Our current SOP-101 permits a 30-minute idle session timeout and does not specify MFA controls, creating a direct compliance gap."
-            }
+
             return response_model(
                 risk_score=risk_score,
                 impact_level=impact_level,

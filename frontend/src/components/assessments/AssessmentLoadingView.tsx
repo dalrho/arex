@@ -10,6 +10,8 @@ type AssessmentLoadingViewProps = {
   documents?: { id: string; filename: string }[];
 };
 
+const EMPTY_ARRAY: { id: string; filename: string }[] = [];
+
 export default function AssessmentLoadingView({
   activeNodeCount,
   regulationTitle = "Regulation Update",
@@ -54,7 +56,7 @@ export default function AssessmentLoadingView({
     };
   }, []);
 
-  const affectedDocs = initialDocuments || [];
+  const affectedDocs = initialDocuments && initialDocuments.length > 0 ? initialDocuments : EMPTY_ARRAY;
   const isFirstRun = affectedDocs.length === 0;
 
   return (
