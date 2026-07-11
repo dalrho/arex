@@ -54,7 +54,7 @@ class Settings(BaseSettings):
     # -----------------------------------------------------------------------
     GEMINI_API_KEY: str = ""  # Set via GEMINI_API_KEY env var
     GEMINI_MODEL_NAME: str = "models/gemini-3.1-flash-lite"
-    GEMINI_EMBEDDING_MODEL: str = "models/text-embedding-004"
+    GEMINI_EMBEDDING_MODEL: str = "gemini-embedding-001"
 
     # -----------------------------------------------------------------------
     # Legacy / Fallback LLM Settings (OpenAI-compatible providers)

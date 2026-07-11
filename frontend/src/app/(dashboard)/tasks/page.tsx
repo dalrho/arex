@@ -6,7 +6,6 @@ import clsx from "clsx";
 import Modal from "@/components/ui/Modal";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { createTask, listRegulations, listTasks, updateTask, syncTasksToJira } from "@/lib/apiClient";
-import { demoRegulations, demoTasks } from "@/lib/demoData";
 import type { RegulationResponse, TaskResponse } from "@/types/api";
 
 const STATUSES = ["TODO", "IN_PROGRESS", "DONE"] as const;
@@ -17,8 +16,8 @@ function makeLocalId(): string {
 }
 
 export default function TasksPage() {
-  const [tasks, setTasks] = useState<TaskResponse[]>(demoTasks);
-  const [regulations, setRegulations] = useState<RegulationResponse[]>(demoRegulations);
+  const [tasks, setTasks] = useState<TaskResponse[]>([]);
+  const [regulations, setRegulations] = useState<RegulationResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
@@ -31,24 +30,22 @@ export default function TasksPage() {
     description: "",
     department: "Engineering",
     priority: "High",
-    regulation_id: demoRegulations[0]?.id ?? "",
+    regulation_id: "",
   });
 
   useEffect(() => {
     Promise.all([listTasks(), listRegulations()])
       .then(([taskRows, regulationRows]) => {
-        const nextTasks = taskRows.length > 0 ? taskRows : demoTasks;
-        const nextRegulations = regulationRows.length > 0 ? regulationRows : demoRegulations;
-        setTasks(nextTasks);
-        setRegulations(nextRegulations);
+        setTasks(taskRows);
+        setRegulations(regulationRows);
         setForm((current) => ({
           ...current,
-          regulation_id: current.regulation_id || nextRegulations[0]?.id || "",
+          regulation_id: current.regulation_id || regulationRows[0]?.id || "",
         }));
       })
       .catch(() => {
-        setTasks(demoTasks);
-        setRegulations(demoRegulations);
+        setTasks([]);
+        setRegulations([]);
       })
       .finally(() => setLoading(false));
   }, []);

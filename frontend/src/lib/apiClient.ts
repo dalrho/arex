@@ -1,11 +1,13 @@
 import type {
   ApprovalRecordResponse,
   AuthUser,
+  DataStats,
   DocumentResponse,
   ImpactResponse,
   LoginResponse,
   RegulationResponse,
   RemediationResponse,
+  ResetResponse,
   TaskCreatePayload,
   TaskResponse,
   TaskUpdatePayload,
@@ -165,8 +167,9 @@ export function runImpactAssessment(regulationId: string): Promise<ImpactRespons
   return sendJson(`/impact/regulation/${regulationId}/assess`, "POST");
 }
 
-export function listRemediations(): Promise<RemediationResponse[]> {
-  return getJson("/remediation");
+export function listRemediations(regulationId?: string): Promise<RemediationResponse[]> {
+  const query = regulationId ? `?regulation_id=${regulationId}` : "";
+  return getJson(`/remediation${query}`);
 }
 
 export function getRemediation(id: string): Promise<RemediationResponse> {
@@ -175,9 +178,17 @@ export function getRemediation(id: string): Promise<RemediationResponse> {
 
 export function updateRemediation(
   id: string,
-  proposedText: string
+  proposedText: string,
+  comments?: string
 ): Promise<RemediationResponse> {
-  return sendJson(`/remediation/${id}`, "PUT", { proposed_text: proposedText });
+  return sendJson(`/remediation/${id}`, "PUT", {
+    proposed_text: proposedText,
+    comments: comments,
+  });
+}
+
+export function resetRemediation(id: string): Promise<RemediationResponse> {
+  return sendJson(`/remediation/${id}/reset`, "POST");
 }
 
 export function generateRemediationDrafts(
@@ -191,7 +202,7 @@ export function generateRemediationDrafts(
 
 export function submitApprovalDecision(
   remediationId: string,
-  decision: "APPROVED" | "REJECTED"
+  decision: string
 ): Promise<ApprovalRecordResponse> {
   return sendJson(`/approvals/remediation/${remediationId}`, "POST", { decision });
 }
@@ -208,20 +219,7 @@ export function updateTask(id: string, payload: TaskUpdatePayload): Promise<Task
   return sendJson(`/tasks/${id}`, "PUT", payload);
 }
 
-export async function downloadRemediationExport(
-  remediationId: string,
-  format: "pdf" | "docx"
-): Promise<void> {
-  const res = await fetch(`${API_BASE}/exports/remediation/${remediationId}/${format}`, {
-    headers: buildHeaders(),
-  });
-  if (!res.ok) throw await parseError(res);
 
-  const disposition = res.headers.get("Content-Disposition") ?? "";
-  const match = disposition.match(/filename=([^;]+)/);
-  const filename = match ? match[1].trim() : `remediation-report.${format}`;
-  triggerBlobDownload(await res.blob(), filename);
-}
 
 function triggerBlobDownload(blob: Blob, filename: string): void {
   const url = window.URL.createObjectURL(blob);
@@ -253,4 +251,53 @@ export function updateRegulationStatus(
 
 export function getAiStatus(): Promise<AIStatusResponse> {
   return getJson<AIStatusResponse>("/ai-status");
+}
+
+// ---------------------------------------------------------------------------
+// Regulation document upload
+// ---------------------------------------------------------------------------
+
+export interface UploadRegulationPayload {
+  file: File;
+  title: string;
+  regulatory_authority: string;
+  document_number?: string;
+  published_date?: string;
+  category?: string;
+  effective_date?: string;
+  summary?: string;
+}
+
+export function uploadRegulation(payload: UploadRegulationPayload): Promise<RegulationResponse> {
+  const formData = new FormData();
+  formData.append("file", payload.file);
+  formData.append("title", payload.title);
+  formData.append("regulatory_authority", payload.regulatory_authority);
+  if (payload.document_number) formData.append("document_number", payload.document_number);
+  if (payload.published_date) formData.append("published_date", payload.published_date);
+  if (payload.category) formData.append("category", payload.category);
+  if (payload.effective_date) formData.append("effective_date", payload.effective_date);
+  if (payload.summary) formData.append("summary", payload.summary);
+  return request<RegulationResponse>("/regulations/upload", {
+    method: "POST",
+    headers: buildHeaders(),
+    body: formData,
+  });
+}
+
+export function fetchRegulationsFromFDA(limit?: number): Promise<{ status: string; ingested_count: number }> {
+  const params = limit ? `?limit=${limit}` : "";
+  return sendJson(`/regulations/poll${params}`, "POST");
+}
+
+// ---------------------------------------------------------------------------
+// Admin / Data Management
+// ---------------------------------------------------------------------------
+
+export function getAdminStats(): Promise<DataStats> {
+  return getJson<DataStats>("/admin/stats");
+}
+
+export function resetApplicationData(): Promise<ResetResponse> {
+  return sendJson<ResetResponse>("/admin/reset", "POST", { confirmation: "RESET" });
 }

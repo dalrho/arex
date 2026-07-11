@@ -202,6 +202,13 @@ class LLMClient:
                     genai_types.Content(role="user", parts=[genai_types.Part(text=current_user_prompt)])
                 )
 
+                logger.info(
+                    f"[DEBUG LOG] Context sent to LLM:\n"
+                    f"--- SYSTEM INSTRUCTION ---\n{system_instruction}\n"
+                    f"--- USER PROMPT ---\n{current_user_prompt}\n"
+                    f"--------------------------"
+                )
+
                 response = client.models.generate_content(
                     model=self.settings.GEMINI_MODEL_NAME,
                     contents=call_contents,
@@ -210,6 +217,12 @@ class LLMClient:
 
                 latency = time.time() - start_time
                 raw_text = response.text
+
+                logger.info(
+                    f"[DEBUG LOG] Raw LLM response:\n"
+                    f"{raw_text}\n"
+                    f"--------------------------"
+                )
 
                 # Extract token usage if available
                 usage = getattr(response, "usage_metadata", None)
@@ -328,6 +341,27 @@ class LLMClient:
                 urgency=urgency,
                 affected_business_areas=affected,
                 rationale=rationale,
+            )
+
+        elif "impact" in response_model.__name__.lower() or "assessment" in response_model.__name__.lower():
+            # Mock impact assessment response
+            risk_score = 0.85
+            impact_level = "High"
+            rationale = (
+                "The new FDA amendment mandates Multi-Factor Authentication (MFA) and reduces the permissible idle "
+                "timeout limit to 15 minutes. Our current SOP-101 (Access Control) does not require MFA and permits "
+                "a 30-minute idle session timeout. This constitutes a high-priority compliance gap requiring immediate revision."
+            )
+            affected_departments = ["IT", "Quality Assurance", "Engineering"]
+            explanations = {
+                "SOP-101.txt": "Our current SOP-101 permits a 30-minute idle session timeout and does not specify MFA controls, creating a direct compliance gap."
+            }
+            return response_model(
+                risk_score=risk_score,
+                impact_level=impact_level,
+                rationale=rationale,
+                affected_departments=affected_departments,
+                explanations=explanations
             )
 
         # 2. Remediation Draft Output
