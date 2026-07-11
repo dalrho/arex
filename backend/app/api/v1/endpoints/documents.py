@@ -407,6 +407,7 @@ def download_document_version(
         detail="Stored file is no longer available for this document version."
     )
 
+
 @router.get("/{document_id}/annotations")
 def get_document_annotations(
     document_id: uuid.UUID,
