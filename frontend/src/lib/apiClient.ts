@@ -11,6 +11,8 @@ import type {
   TaskCreatePayload,
   TaskResponse,
   TaskUpdatePayload,
+  DocumentVersionResponse,
+  DocumentAnnotationResponse,
 } from "@/types/api";
 
 export interface AIStatusResponse {
@@ -88,7 +90,27 @@ async function parseError(res: Response): Promise<ApiError> {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, init);
+  const mergedInit: RequestInit = {
+    ...init,
+    cache: "no-store",
+  };
+  
+  if (mergedInit.headers) {
+    mergedInit.headers = {
+      ...mergedInit.headers,
+      "Cache-Control": "no-cache, no-store, must-revalidate",
+      "Pragma": "no-cache",
+      "Expires": "0",
+    };
+  } else {
+    mergedInit.headers = {
+      "Cache-Control": "no-cache, no-store, must-revalidate",
+      "Pragma": "no-cache",
+      "Expires": "0",
+    };
+  }
+
+  const res = await fetch(`${API_BASE}${path}`, mergedInit);
   if (!res.ok) throw await parseError(res);
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
@@ -300,4 +322,31 @@ export function getAdminStats(): Promise<DataStats> {
 
 export function resetApplicationData(): Promise<ResetResponse> {
   return sendJson<ResetResponse>("/admin/reset", "POST", { confirmation: "RESET" });
+}
+
+export function listDocumentVersions(documentId: string): Promise<DocumentVersionResponse[]> {
+  return getJson(`/documents/${documentId}/versions`);
+}
+
+export async function fetchDocumentVersionBlob(id: string, version: number): Promise<Blob> {
+  const res = await fetch(`${API_BASE}/documents/${id}/versions/${version}/download`, {
+    headers: buildHeaders(),
+  });
+  if (!res.ok) throw await parseError(res);
+  return res.blob();
+}
+
+export async function downloadDocumentVersion(id: string, version: number, filename: string): Promise<void> {
+  triggerBlobDownload(await fetchDocumentVersionBlob(id, version), filename);
+}
+
+export function getDocumentAnnotations(documentId: string): Promise<DocumentAnnotationResponse[]> {
+  return getJson(`/documents/${documentId}/annotations`);
+}
+
+export function getDocumentVersionAnnotations(
+  documentId: string,
+  versionNumber: number
+): Promise<DocumentAnnotationResponse[]> {
+  return getJson(`/documents/${documentId}/versions/${versionNumber}/annotations`);
 }

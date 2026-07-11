@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { Download, FileText, Loader2, Search, Trash2 } from "lucide-react";
 import DocumentUploader from "@/components/documents/DocumentUploader";
 import DocumentVersionTag from "@/components/documents/DocumentVersionTag";
@@ -128,7 +129,7 @@ export default function DocumentsPage() {
                         className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-700 text-xs font-bold text-slate-200 hover:bg-slate-900 disabled:opacity-60"
                       >
                         <Download className="h-4 w-4" />
-                        Save
+                        Download
                       </button>
                       <button
                         type="button"
@@ -139,6 +140,13 @@ export default function DocumentsPage() {
                         <Trash2 className="h-4 w-4" />
                         Delete
                       </button>
+                      <Link
+                        href={`/documents/${document.id}`}
+                        className="col-span-2 inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-xs font-bold text-white transition-all shadow-md shadow-blue-900/30"
+                      >
+                        <FileText className="h-4 w-4" />
+                        Version History & Annotations
+                      </Link>
                     </div>
 
                     <div className="mt-5 flex flex-wrap gap-2">
