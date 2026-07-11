@@ -20,7 +20,7 @@ export default function LandingPage() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-slate-900 via-slate-950 to-brand-900 p-6 text-white">
       <div className="max-w-2xl space-y-8 text-center">
-        <div className="opacity-0 motion-safe:animate-scale-in">
+        <div className="motion-safe:opacity-0 motion-safe:animate-scale-in">
           <Image
             src={BRAND_LOGO_SRC}
             alt="AREX"
@@ -31,16 +31,16 @@ export default function LandingPage() {
           />
         </div>
 
-        <div className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-800/50 px-3 py-1 text-xs font-semibold tracking-wide text-brand-100 opacity-0 motion-safe:animate-fade-in-up motion-safe:[animation-delay:120ms]">
+        <div className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-800/50 px-3 py-1 text-xs font-semibold tracking-wide text-brand-100 motion-safe:opacity-0 motion-safe:animate-fade-in-up motion-safe:[animation-delay:120ms]">
           <span className="h-2 w-2 rounded-full bg-emerald-500" />
           FDA 21 CFR Part 11 Regulatory Intelligence
         </div>
 
-        <p className="text-lg text-slate-300 opacity-0 motion-safe:animate-fade-in-up motion-safe:[animation-delay:340ms]">
+        <p className="text-lg text-slate-300 motion-safe:opacity-0 motion-safe:animate-fade-in-up motion-safe:[animation-delay:340ms]">
           Enforcing safety-critical compliance through decoupled agentic LLM remediation and deterministic database audit logs.
         </p>
 
-        <div className="flex flex-wrap items-center justify-center gap-4 opacity-0 motion-safe:animate-fade-in-up motion-safe:[animation-delay:460ms]">
+        <div className="flex flex-wrap items-center justify-center gap-4 motion-safe:opacity-0 motion-safe:animate-fade-in-up motion-safe:[animation-delay:460ms]">
           <Link
             href="/login"
             className="rounded-lg bg-blue-600 px-6 py-3 text-sm font-semibold shadow-lg transition-all hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-blue-600/20 active:translate-y-0"

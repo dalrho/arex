@@ -1,9 +1,12 @@
 import os
 import uuid
+import logging
 from typing import Any, List
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
+
+logger = logging.getLogger("arex.api.documents")
 
 from app.core.dependencies import get_db, get_tenant_id
 from app.models.document import Document
@@ -54,10 +57,10 @@ async def upload_document(
     # 2. Validate File Type
     filename = file.filename
     _, ext = os.path.splitext(filename.lower())
-    if ext not in [".pdf", ".txt"]:
+    if ext not in [".pdf", ".txt", ".docx"]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Unsupported file format. Only PDF and TXT files are allowed."
+            detail="Unsupported file format. Only PDF, TXT and DOCX files are allowed."
         )
 
     # Reset file read cursor
@@ -78,6 +81,10 @@ async def upload_document(
     try:
         if ext == ".pdf":
             parsed_text = extract_text_from_pdf(file_path)
+        elif ext == ".docx":
+            import docx
+            doc = docx.Document(file_path)
+            parsed_text = "\n".join([p.text for p in doc.paragraphs])
         else:
             parsed_text = file_bytes.decode("utf-8", errors="replace")
     except Exception as e:
@@ -119,6 +126,13 @@ async def upload_document(
     # 5. Chunk and Index in Qdrant Vector DB
     try:
         text_chunks = chunk_text(parsed_text)
+        num_docs = db.query(Document).filter(Document.organization_id == org_id).count()
+        logger.info(
+            f"[DEBUG LOG] Indexing document '{filename}' | "
+            f"Embedding Model: {embedding_service.settings.GEMINI_EMBEDDING_MODEL} | "
+            f"Total Indexed Documents: {num_docs} | "
+            f"Number of Chunks: {len(text_chunks)}"
+        )
         if text_chunks:
             vectors = embedding_service.get_embeddings(text_chunks)
             qdrant_chunks = [
@@ -135,7 +149,7 @@ async def upload_document(
         # and notify the client or retry.
         # This keeps the REST endpoint resilient.
         router.routes  # dummy access
-        # logger.error(f"Vector DB indexing failed: {e}")
+        logger.error(f"[DEBUG LOG] Vector DB indexing failed for '{filename}': {e}", exc_info=True)
 
     return db_doc
 
@@ -162,6 +176,7 @@ def download_document(
     parsed text if the original binary is no longer available on disk.
     """
     from fastapi.responses import FileResponse, Response
+    import mimetypes
 
     org_id = uuid.UUID(tenant_id)
     document = db.query(Document).filter(
@@ -174,11 +189,24 @@ def download_document(
             detail="Document not found"
         )
 
+    # Determine media type dynamically
+    mime_type, _ = mimetypes.guess_type(document.filename)
+    if not mime_type:
+        if document.filename.lower().endswith(".pdf"):
+            mime_type = "application/pdf"
+        elif document.filename.lower().endswith(".txt"):
+            mime_type = "text/plain"
+        elif document.filename.lower().endswith(".docx"):
+            mime_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        else:
+            mime_type = "application/octet-stream"
+
     if document.file_path and os.path.exists(document.file_path):
         return FileResponse(
             path=document.file_path,
             filename=document.filename,
-            media_type="application/octet-stream",
+            media_type=mime_type,
+            content_disposition_type="attachment",
         )
 
     if document.parsed_text:
@@ -242,12 +270,18 @@ def delete_document(
     except Exception:
         pass
 
-    # Delete local file
-    if os.path.exists(document.file_path):
-        try:
-            os.remove(document.file_path)
-        except OSError:
-            pass
+    # Delete local files (main + versions)
+    files_to_delete = {document.file_path}
+    for version in document.history:
+        if version.file_path:
+            files_to_delete.add(version.file_path)
+
+    for path in files_to_delete:
+        if path and os.path.exists(path):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
 
     db.delete(document)
     db.commit()
@@ -305,3 +339,207 @@ def get_document_version(
         )
     return version
 
+@router.get("/{document_id}/versions/{version_number}/download")
+def download_document_version(
+    document_id: uuid.UUID,
+    version_number: int,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_tenant_id)
+) -> Any:
+    """
+    Download the file for a specific document version.
+    """
+    from fastapi.responses import FileResponse, Response
+    import mimetypes
+
+    org_id = uuid.UUID(tenant_id)
+    document = db.query(Document).filter(
+        Document.id == document_id,
+        Document.organization_id == org_id
+    ).first()
+    
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found"
+        )
+        
+    version = db.query(DocumentVersion).filter(
+        DocumentVersion.document_id == document_id,
+        DocumentVersion.version == version_number
+    ).first()
+    
+    if not version:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Version not found"
+        )
+
+    mime_type, _ = mimetypes.guess_type(version.filename)
+    if not mime_type:
+        if version.filename.lower().endswith(".pdf"):
+            mime_type = "application/pdf"
+        elif version.filename.lower().endswith(".txt"):
+            mime_type = "text/plain"
+        elif version.filename.lower().endswith(".docx"):
+            mime_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        else:
+            mime_type = "application/octet-stream"
+
+    if version.file_path and os.path.exists(version.file_path):
+        return FileResponse(
+            path=version.file_path,
+            filename=version.filename,
+            media_type=mime_type,
+            content_disposition_type="attachment",
+        )
+
+    if version.parsed_text:
+        fallback_name = os.path.splitext(version.filename)[0] + ".txt"
+        return Response(
+            content=version.parsed_text,
+            media_type="text/plain; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{fallback_name}"'},
+        )
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="Stored file is no longer available for this document version."
+    )
+
+
+@router.get("/{document_id}/annotations")
+def get_document_annotations(
+    document_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_tenant_id)
+) -> Any:
+    """
+    Extract and return PDF annotations for the latest document version.
+    """
+    import fitz
+    import re
+    org_id = uuid.UUID(tenant_id)
+    document = db.query(Document).filter(
+        Document.id == document_id,
+        Document.organization_id == org_id
+    ).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    annotations = []
+    if document.file_path and os.path.exists(document.file_path) and document.filename.lower().endswith(".pdf"):
+        try:
+            doc = fitz.open(document.file_path)
+            for page_idx, page in enumerate(doc):
+                for annot in page.annots():
+                    info = annot.info
+                    content = info.get("content", "")
+                    
+                    section = "N/A"
+                    orig_text = ""
+                    proposed_text = ""
+                    justification = ""
+                    reg_ref = ""
+                    
+                    s_match = re.search(r"Section:\s*(.*?)(?=\nOriginal Text:|\nProposed Text:|\nJustification:|\nRegulation Reference:|$)", content, re.DOTALL)
+                    o_match = re.search(r"Original Text:\s*(.*?)(?=\nProposed Text:|\nJustification:|\nRegulation Reference:|$)", content, re.DOTALL)
+                    p_match = re.search(r"Proposed Text:\s*(.*?)(?=\nJustification:|\nRegulation Reference:|$)", content, re.DOTALL)
+                    j_match = re.search(r"Justification:\s*(.*?)(?=\nRegulation Reference:|$)", content, re.DOTALL)
+                    r_match = re.search(r"Regulation Reference:\s*(.*)", content, re.DOTALL)
+                    
+                    if s_match: section = s_match.group(1).strip()
+                    if o_match: orig_text = o_match.group(1).strip()
+                    if p_match: proposed_text = p_match.group(1).strip()
+                    if j_match: justification = j_match.group(1).strip()
+                    if r_match: reg_ref = r_match.group(1).strip()
+                    
+                    annotations.append({
+                        "id": info.get("id", str(uuid.uuid4())),
+                        "page": page_idx + 1,
+                        "type": annot.type[1],
+                        "title": info.get("title", "AI Remediation"),
+                        "raw_content": content,
+                        "section": section,
+                        "original_text": orig_text,
+                        "proposed_text": proposed_text,
+                        "justification": justification,
+                        "regulation_reference": reg_ref
+                    })
+            doc.close()
+        except Exception as e:
+            logger.error(f"Failed to read PDF annotations: {e}")
+            
+    return annotations
+
+@router.get("/{document_id}/versions/{version_number}/annotations")
+def get_document_version_annotations(
+    document_id: uuid.UUID,
+    version_number: int,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_tenant_id)
+) -> Any:
+    """
+    Extract and return PDF annotations for a specific document version.
+    """
+    import fitz
+    import re
+    org_id = uuid.UUID(tenant_id)
+    document = db.query(Document).filter(
+        Document.id == document_id,
+        Document.organization_id == org_id
+    ).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+        
+    version = db.query(DocumentVersion).filter(
+        DocumentVersion.document_id == document_id,
+        DocumentVersion.version == version_number
+    ).first()
+    if not version:
+        raise HTTPException(status_code=404, detail="Version not found")
+
+    annotations = []
+    if version.file_path and os.path.exists(version.file_path) and version.filename.lower().endswith(".pdf"):
+        try:
+            doc = fitz.open(version.file_path)
+            for page_idx, page in enumerate(doc):
+                for annot in page.annots():
+                    info = annot.info
+                    content = info.get("content", "")
+                    
+                    section = "N/A"
+                    orig_text = ""
+                    proposed_text = ""
+                    justification = ""
+                    reg_ref = ""
+                    
+                    s_match = re.search(r"Section:\s*(.*?)(?=\nOriginal Text:|\nProposed Text:|\nJustification:|\nRegulation Reference:|$)", content, re.DOTALL)
+                    o_match = re.search(r"Original Text:\s*(.*?)(?=\nProposed Text:|\nJustification:|\nRegulation Reference:|$)", content, re.DOTALL)
+                    p_match = re.search(r"Proposed Text:\s*(.*?)(?=\nJustification:|\nRegulation Reference:|$)", content, re.DOTALL)
+                    j_match = re.search(r"Justification:\s*(.*?)(?=\nRegulation Reference:|$)", content, re.DOTALL)
+                    r_match = re.search(r"Regulation Reference:\s*(.*)", content, re.DOTALL)
+                    
+                    if s_match: section = s_match.group(1).strip()
+                    if o_match: orig_text = o_match.group(1).strip()
+                    if p_match: proposed_text = p_match.group(1).strip()
+                    if j_match: justification = j_match.group(1).strip()
+                    if r_match: reg_ref = r_match.group(1).strip()
+                    
+                    annotations.append({
+                        "id": info.get("id", str(uuid.uuid4())),
+                        "page": page_idx + 1,
+                        "type": annot.type[1],
+                        "title": info.get("title", "AI Remediation"),
+                        "raw_content": content,
+                        "section": section,
+                        "original_text": orig_text,
+                        "proposed_text": proposed_text,
+                        "justification": justification,
+                        "regulation_reference": reg_ref
+                    })
+            doc.close()
+        except Exception as e:
+            logger.error(f"Failed to read PDF annotations: {e}")
+            
+    return annotations

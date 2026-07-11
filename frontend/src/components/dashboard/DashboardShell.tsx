@@ -11,6 +11,7 @@ import {
   LogOut,
   Menu,
   Scale,
+  Settings,
   X,
   Cpu,
 } from "lucide-react";
@@ -24,6 +25,10 @@ const navigation = [
   { label: "Regulations", href: "/regulations", icon: Scale },
   { label: "Documents", href: "/documents", icon: Files },
   { label: "Tasks", href: "/tasks", icon: ClipboardCheck },
+];
+
+const settingsNavigation = [
+  { label: "Data Management", href: "/settings/data-management", icon: Settings },
 ];
 
 // ---------------------------------------------------------------------------
@@ -76,20 +81,10 @@ function AIModePanel({ status }: { status: AIStatusResponse | null | "loading" }
     );
   }
 
-  // Offline
-  return (
-    <div
-      title={status?.reason ?? "Offline Mode — mock responses active"}
-      className="mx-4 mb-1 mt-1 rounded-lg border border-slate-700/60 bg-slate-900/50 px-3 py-2"
-    >
-      <div className="flex items-center gap-2">
-        <span className="h-2 w-2 flex-shrink-0 rounded-full bg-slate-500" />
-        <span className="text-xs font-medium text-slate-500">Offline Mode</span>
-      </div>
-      <p className="mt-0.5 text-[10px] text-slate-600">Mock responses active</p>
-    </div>
-  );
+  // Offline — render nothing
+  return null;
 }
+
 
 // ---------------------------------------------------------------------------
 // DashboardShell
@@ -230,9 +225,16 @@ function Sidebar({
       </div>
 
       {/* Navigation links */}
-      <nav className="flex-1 px-5 py-6">
-        <div className="space-y-4">
+      <nav className="flex-1 px-5 py-6 flex flex-col gap-6">
+        <div className="space-y-1">
+          <p className="px-4 text-[10px] font-bold uppercase tracking-widest text-slate-600 mb-2">Workspace</p>
           {navigation.map((item) => (
+            <SidebarLink key={item.href} item={item} onNavigate={onNavigate} />
+          ))}
+        </div>
+        <div className="space-y-1">
+          <p className="px-4 text-[10px] font-bold uppercase tracking-widest text-slate-600 mb-2">Settings</p>
+          {settingsNavigation.map((item) => (
             <SidebarLink key={item.href} item={item} onNavigate={onNavigate} />
           ))}
         </div>

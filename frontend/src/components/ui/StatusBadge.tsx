@@ -25,6 +25,8 @@ export function toneForStatus(value: string): BadgeTone {
     case "TODO":
     case "MEDIUM":
     case "PENDING_ANALYSIS":
+    case "UNDER_REVIEW":
+    case "NEEDS_REVISION":
       return "amber";
     case "REJECTED":
     case "CRITICAL":
@@ -32,6 +34,7 @@ export function toneForStatus(value: string): BadgeTone {
       return "red";
     case "IN_PROGRESS":
     case "NEW":
+    case "DRAFT":
       return "blue";
     default:
       return "slate";

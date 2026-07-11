@@ -9,7 +9,7 @@ logger = logging.getLogger("arex.embedding-service")
 
 # Gemini embedding dimension for text-embedding-004
 GEMINI_EMBEDDING_DIM = 768
-MOCK_EMBEDDING_DIM = 1024
+MOCK_EMBEDDING_DIM = 768
 
 
 class EmbeddingService:
@@ -61,6 +61,7 @@ class EmbeddingService:
         """Calls Google Gemini text-embedding-004 via the google.genai SDK."""
         try:
             from google import genai  # type: ignore
+            from google.genai import types  # type: ignore
         except ImportError as exc:
             raise RuntimeError(
                 "google-genai is not installed. Run: pip install google-genai"
@@ -69,11 +70,17 @@ class EmbeddingService:
         client = genai.Client(api_key=self.settings.effective_gemini_key)
         model = self.settings.GEMINI_EMBEDDING_MODEL
 
+        # Configure 768 output dimensions to match the vector DB and mock size
+        config = None
+        if "gemini-embedding" in model.lower() or "embedding-001" in model.lower():
+            config = types.EmbedContentConfig(output_dimensionality=768)
+
         embeddings = []
         for text in texts:
             response = client.models.embed_content(
                 model=model,
                 contents=text,
+                config=config,
             )
             # The new SDK returns response.embeddings (list of ContentEmbedding)
             embedding_values = response.embeddings[0].values

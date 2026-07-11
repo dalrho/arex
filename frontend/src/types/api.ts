@@ -17,6 +17,7 @@ export interface DocumentResponse {
   filename: string;
   file_path: string;
   version: number;
+  parsed_text?: string;
   created_at: string;
 }
 
@@ -37,8 +38,15 @@ export interface RegulationResponse {
   hash_value: string;
   status: string;
   created_at: string;
-  relevant?: boolean | null;
+  // Source tracking
+  source?: string | null;           // "FDA_API" | "DOCUMENT_UPLOAD"
+  document_number?: string | null;
+  effective_date?: string | null;
+  summary?: string | null;
+  regulatory_authority?: string | null;
   category?: string | null;
+  // AI verdicts
+  relevant?: boolean | null;
   urgency?: string | null;
   affected_business_areas?: string[] | null;
   rationale?: string | null;
@@ -77,15 +85,22 @@ export type RemediationStatus = "PENDING_REVIEW" | "APPROVED" | "REJECTED";
 export interface RemediationResponse {
   id: string;
   document_id: string;
+  sop_id?: string;
+  sopId?: string;
   regulation_id: string;
   proposed_text: string;
+  proposed_revision?: string;
+  proposedRevision?: string;
   original_text: string;
+  current_content?: string;
+  currentContent?: string;
   diff_content: DiffContent | null;
   status: RemediationStatus | string;
   reviewer_id: string | null;
   reviewed_at: string | null;
   created_at: string;
   explanation?: string | null;
+  comments?: string | null;
   requires_tasks?: boolean | null;
 }
 
@@ -113,6 +128,8 @@ export interface TaskResponse {
   priority: string;
   status: TaskStatus | string;
   created_at: string;
+  jira_issue_key?: string | null;
+  jira_issue_url?: string | null;
 }
 
 export interface TaskCreatePayload {
@@ -130,4 +147,44 @@ export interface TaskUpdatePayload {
   department?: string;
   priority?: string;
   status?: string;
+}
+
+export interface DataStats {
+  total_regulations: number;
+  total_documents: number;
+  total_compliance_cases: number;
+  total_knowledge_base_documents: number;
+  total_impact_assessments: number;
+  total_remediation_drafts: number;
+  total_implementation_tasks: number;
+}
+
+export interface ResetResponse {
+  status: string;
+  message: string;
+  deleted: Record<string, number>;
+}
+
+export interface DocumentVersionResponse {
+  id: string;
+  document_id: string;
+  version: number;
+  filename: string;
+  file_path: string;
+  parsed_text: string;
+  reason_for_revision: string;
+  created_at: string;
+}
+
+export interface DocumentAnnotationResponse {
+  id: string;
+  page: number;
+  type: string;
+  title: string;
+  raw_content: string;
+  section: string;
+  original_text: string;
+  proposed_text: string;
+  justification: string;
+  regulation_reference: string;
 }

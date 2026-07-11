@@ -8,7 +8,7 @@ export const metadata: Metadata = {
   title: "AREX — FDA 21 CFR Part 11 Compliance Platform",
   description: "AI-powered regulatory intelligence, document remediation, and compliance workflow tracking.",
   icons: {
-    icon: "/brand/arex-logo.png",
+    icon: "/brand/arex-logo-square.png",
   },
 };
 

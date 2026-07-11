@@ -14,7 +14,7 @@ def assess_compliance_impact(
     regulation_id: uuid.UUID,
     organization_id: uuid.UUID,
     db: Session,
-    similarity_threshold: float = 0.75
+    similarity_threshold: float = 0.60
 ) -> ImpactAssessment:
     """
     Assess compliance impact of a regulation update:
@@ -57,6 +57,22 @@ def assess_compliance_impact(
         limit=20
     )
 
+    # Log retrieved chunks info
+    from app.models.document import Document
+    logger.info(f"[DEBUG LOG] Retrieved {len(matched_chunks)} total raw chunks from Qdrant.")
+    for idx, chunk in enumerate(matched_chunks):
+        doc_id_str = chunk.get("document_id")
+        doc_name = "Unknown"
+        if doc_id_str:
+            doc_obj = db.query(Document).filter(Document.id == uuid.UUID(doc_id_str)).first()
+            if doc_obj:
+                doc_name = doc_obj.filename
+        logger.info(
+            f"[DEBUG LOG] Chunk {idx} | Document Name: {doc_name} | "
+            f"Doc ID: {doc_id_str} | Chunk Index: {chunk.get('chunk_index')} | "
+            f"Similarity Score: {chunk.get('score', 0.0):.4f}"
+        )
+
     # 3. Filter matched SOPs based on similarity threshold
     unique_docs = {}
     for chunk in matched_chunks:
@@ -73,109 +89,149 @@ def assess_compliance_impact(
     matched_doc_ids = list(unique_docs.keys())
     logger.info(f"Found {len(matched_doc_ids)} documents matching regulation with similarity >= {similarity_threshold}")
 
-    # 4. Map departments and category based on heuristic analysis or previous state
-    # (Since this is step-by-step logic, we derive it from keyword analysis or metadata)
-    affected_departments = ["Quality Assurance"]
-    content_lower = regulation.raw_content.lower()
-    
-    # Standard keyword extraction for departments
-    if "multi-factor" in content_lower or "mfa" in content_lower:
-        affected_departments.append("IT")
-    if "timeout" in content_lower or "session" in content_lower:
-        if "Engineering" not in affected_departments:
-            affected_departments.append("Engineering")
-    if "signature" in content_lower or "sign" in content_lower:
-        if "Training" not in affected_departments:
-            affected_departments.append("Training")
-
-    # Determine category matching RegulatoryIntelligence category structure
-    category = "other"
-    if "signature" in content_lower:
-        category = "signatures"
-    elif "audit" in content_lower or "log" in content_lower:
-        category = "records"
-    elif "mfa" in content_lower or "timeout" in content_lower:
-        category = "validation"
-
-    # Default urgency (will override based on keywords or database update status)
-    urgency = "low"
-    if "suspend" in content_lower or "warning" in content_lower or "penalty" in content_lower:
-        urgency = "critical"
-    elif "mfa" in content_lower or "timeout" in content_lower:
-        urgency = "high"
-    elif "signature" in content_lower:
-        urgency = "medium"
-
-    # Compute deterministic risk
-    risk_info = calculate_risk_score(
-        urgency=urgency,
-        category=category,
-        affected_departments_count=len(affected_departments)
-    )
-
-    # Compile rationale string
-    matched_sops_names = []
-    affected_docs_list = []
+    # 4. AI-Powered RAG Analysis (or mock fallback in offline mode)
+    from app.ai.llm_client import llm_client
+    from pydantic import BaseModel, Field
     from app.models.document import Document
+
+    class ImpactAssessmentLLMOutput(BaseModel):
+        risk_score: float = Field(..., description="The risk score calculated as a float between 0.0 and 1.0 representing the compliance risk of the regulation update")
+        impact_level: str = Field(..., description="The overall impact level: 'Low', 'Medium', or 'High'")
+        rationale: str = Field(..., description="A clear, comprehensive compliance rationale explaining the conflicts, gaps, or alignment between the regulation update and our SOP portfolio")
+        affected_departments: list[str] = Field(..., description="List of affected department names (e.g. IT, Quality Assurance, Engineering, Training, Operations)")
+        explanations: dict[str, str] = Field(..., description="A dictionary mapping the filename of each affected SOP to a short paragraph explaining exactly what compliance gaps or conflicts exist in its retrieved snippet and what modifications are required for compliance")
+
+    # Fetch document objects for matched IDs
+    docs = []
+    sop_context_parts = []
     if matched_doc_ids:
         docs = db.query(Document).filter(Document.id.in_(matched_doc_ids)).all()
-        matched_sops_names = [d.filename for d in docs]
         for doc in docs:
-            fname_lower = doc.filename.lower()
-            if "sop" in fname_lower:
-                doc_type = "SOP"
-            elif "policy" in fname_lower:
-                doc_type = "Company Policy"
-            elif "plan" in fname_lower:
-                doc_type = "Validation Plan"
-            else:
-                doc_type = "Other controlled document"
-
-            info = unique_docs[doc.id]
-            score = info["max_score"]
-            snippet = info["text_snippet"]
-            
-            topics = []
-            reg_lower = regulation.raw_content.lower()
-            if "mfa" in reg_lower or "multi-factor" in reg_lower:
-                topics.append("Multi-Factor Authentication (MFA)")
-            if "timeout" in reg_lower or "idle" in reg_lower:
-                topics.append("Session Idle Timeout")
-            if "signature" in reg_lower:
-                topics.append("Electronic Signatures")
-            
-            explanation = (
-                f"Document '{doc.filename}' specifies system access or control procedures but lacks "
-                f"explicit alignment with new FDA guidance on {', '.join(topics) if topics else 'controls'}. "
-                f"Requires revision of session limits or authentication factors."
+            snippet = unique_docs[doc.id]["text_snippet"]
+            sop_context_parts.append(
+                f"SOP Document: {doc.filename}\n"
+                f"Retrieved Context Snippet:\n{snippet}\n"
+                f"---"
             )
 
-            affected_docs_list.append({
-                "document_id": str(doc.id),
-                "document_name": doc.filename,
-                "document_type": doc_type,
-                "affected_sections": snippet,
-                "explanation": explanation,
-                "confidence_score": round(score * 100, 1)
-            })
+    sop_context = "\n\n".join(sop_context_parts) if sop_context_parts else "No matching company SOP documents found in QMS."
 
-    sops_str = ", ".join(matched_sops_names) if matched_sops_names else "None"
-    rationale = (
-        f"Compliance assessment of '{regulation.title}'. "
-        f"Matched SOPs: {sops_str}. "
-        f"Identified impact category as '{category}' and urgency as '{urgency}'. "
-        f"Affected departments: {', '.join(affected_departments)}."
+    system_prompt = (
+        "You are an expert FDA GxP compliance officer. Your task is to perform a compliance impact assessment "
+        "mapping a new regulatory update to a set of company Standard Operating Procedures (SOPs). "
+        "Analyze the new regulation content against the provided company SOP context snippets. "
+        "Identify any conflicts, gaps, or security requirements. You must output the overall impact level "
+        "(Low, Medium, High), a calculated risk score (0.0 to 1.0), a detailed compliance rationale, "
+        "the affected departments, and specific explanations for each affected SOP detailing why it "
+        "requires modification."
     )
 
-    # 5. Save impact assessment
+    user_prompt = (
+        f"NEW REGULATORY UPDATE:\n"
+        f"Title: {regulation.title}\n"
+        f"Published Date: {regulation.published_date}\n"
+        f"Content:\n{regulation.raw_content}\n\n"
+        f"COMPANY SOP CONTEXT (RELEVANT SECTIONS):\n"
+        f"{sop_context}\n\n"
+        f"Analyze the regulation update against our SOP context and generate the structured compliance impact assessment."
+    )
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt}
+    ]
+
+    try:
+        logger.info(f"Invoking LLM for compliance impact assessment on '{regulation.title}'...")
+        llm_response = llm_client.get_completion(
+            messages=messages,
+            response_model=ImpactAssessmentLLMOutput,
+            temperature=0.0
+        )
+    except Exception as llm_err:
+        logger.error(f"LLM call failed for impact assessment: {llm_err}. Using baseline fallback.")
+        # Minimal fallback in case of API failure
+        llm_response = ImpactAssessmentLLMOutput(
+            risk_score=0.5,
+            impact_level="Medium",
+            rationale=f"Automatic compliance assessment for '{regulation.title}' completed with fallback due to LLM error.",
+            affected_departments=["Quality Assurance"],
+            explanations={}
+        )
+
+    # 5. Compile and serialize final affected documents list
+    affected_docs_list = []
+
+    # In offline/demo mode, the vector similarity threshold is never met (scores ~0.02),
+    # so docs is empty. We fall back to loading all org documents and use the LLM
+    # explanations to determine which ones need revision.
+    from app.ai.llm_client import llm_client as _llm_client_ref
+    is_offline = _llm_client_ref.is_offline_mode()
+    if not docs and is_offline:
+        all_org_docs = db.query(Document).filter(Document.organization_id == organization_id).all()
+        # Build a dummy unique_docs entry for each so the loop below works
+        for d in all_org_docs:
+            if d.id not in unique_docs:
+                unique_docs[d.id] = {"max_score": 0.0, "text_snippet": ""}
+        docs = all_org_docs
+
+    # Match the LLM explanations back to actual db documents
+    for doc in docs:
+        # Check if the document was marked as affected by the LLM (case-insensitive name check)
+        explanation = None
+        for filename_key, exp_text in llm_response.explanations.items():
+            import os
+            doc_base = os.path.splitext(doc.filename)[0].lower().strip()
+            key_base = os.path.splitext(filename_key)[0].lower().strip()
+            if doc_base in key_base or key_base in doc_base:
+                explanation = exp_text
+                break
+        
+        # If the LLM didn't return an explanation but the chunk was a strong vector match,
+        # we still flag it as affected with a default explanation.
+        # In offline mode, we rely strictly on the LLM explanations dict to determine
+        # which files actually need revision — skip any doc not explicitly listed.
+        if explanation is None and matched_doc_ids and not is_offline:
+            explanation = (
+                f"SOP section conflicts with new guidelines on {regulation.title}. "
+                f"Requires review of authentication/access mechanisms."
+            )
+
+        # In offline mode, only include documents the mock LLM explicitly flagged as needing revision
+        if explanation is None and is_offline:
+            continue
+
+        fname_lower = doc.filename.lower()
+        if "sop" in fname_lower:
+            doc_type = "SOP"
+        elif "policy" in fname_lower:
+            doc_type = "Company Policy"
+        elif "plan" in fname_lower:
+            doc_type = "Validation Plan"
+        else:
+            doc_type = "Other controlled document"
+
+        score = unique_docs[doc.id]["max_score"]
+        snippet = unique_docs[doc.id]["text_snippet"]
+
+        affected_docs_list.append({
+            "document_id": str(doc.id),
+            "document_name": doc.filename,
+            "document_type": doc_type,
+            "affected_sections": snippet,
+            "explanation": explanation,
+            "confidence_score": round(score * 100, 1)
+        })
+
+    # 6. Save or update ImpactAssessment in database
     assessment = ImpactAssessment(
         id=uuid.uuid4(),
         regulation_id=regulation_id,
         organization_id=organization_id,
-        risk_score=risk_info["risk_score"],
-        impact_level=risk_info["impact_level"],
-        rationale=rationale,
-        affected_departments=affected_departments,
+        risk_score=llm_response.risk_score,
+        impact_level=llm_response.impact_level,
+        rationale=llm_response.rationale,
+        affected_departments=llm_response.affected_departments,
         affected_documents=affected_docs_list,
         status="pending"
     )
@@ -183,9 +239,9 @@ def assess_compliance_impact(
     db.add(assessment)
     db.commit()
     db.refresh(assessment)
-    
+
     # Store matched document list on the transient property for graph state
-    assessment.matched_document_ids = matched_doc_ids
-    
+    assessment.matched_document_ids = [uuid.UUID(d["document_id"]) for d in affected_docs_list]
+
     return assessment
 

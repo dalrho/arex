@@ -10,9 +10,9 @@ from app.api.v1.endpoints import (
     tasks,
     approvals,
     dashboard,
-    exports,
     users,
     ai_status,
+    admin,
 )
 
 api_router = APIRouter()
@@ -28,5 +28,5 @@ api_router.include_router(remediation.router, prefix="/remediation", tags=["Reme
 api_router.include_router(tasks.router, prefix="/tasks", tags=["Implementation Tasks"])
 api_router.include_router(approvals.router, prefix="/approvals", tags=["Approvals"])
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["Dashboard"])
-api_router.include_router(exports.router, prefix="/exports", tags=["Exports"])
 api_router.include_router(ai_status.router, prefix="/ai-status", tags=["AI Status"])
+api_router.include_router(admin.router, prefix="/admin", tags=["Admin"])

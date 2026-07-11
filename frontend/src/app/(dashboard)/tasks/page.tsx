@@ -6,7 +6,6 @@ import clsx from "clsx";
 import Modal from "@/components/ui/Modal";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { createTask, listRegulations, listTasks, updateTask, syncTasksToJira } from "@/lib/apiClient";
-import { demoRegulations, demoTasks } from "@/lib/demoData";
 import type { RegulationResponse, TaskResponse } from "@/types/api";
 
 const STATUSES = ["TODO", "IN_PROGRESS", "DONE"] as const;
@@ -17,8 +16,8 @@ function makeLocalId(): string {
 }
 
 export default function TasksPage() {
-  const [tasks, setTasks] = useState<TaskResponse[]>(demoTasks);
-  const [regulations, setRegulations] = useState<RegulationResponse[]>(demoRegulations);
+  const [tasks, setTasks] = useState<TaskResponse[]>([]);
+  const [regulations, setRegulations] = useState<RegulationResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
@@ -31,24 +30,22 @@ export default function TasksPage() {
     description: "",
     department: "Engineering",
     priority: "High",
-    regulation_id: demoRegulations[0]?.id ?? "",
+    regulation_id: "",
   });
 
   useEffect(() => {
     Promise.all([listTasks(), listRegulations()])
       .then(([taskRows, regulationRows]) => {
-        const nextTasks = taskRows.length > 0 ? taskRows : demoTasks;
-        const nextRegulations = regulationRows.length > 0 ? regulationRows : demoRegulations;
-        setTasks(nextTasks);
-        setRegulations(nextRegulations);
+        setTasks(taskRows);
+        setRegulations(regulationRows);
         setForm((current) => ({
           ...current,
-          regulation_id: current.regulation_id || nextRegulations[0]?.id || "",
+          regulation_id: current.regulation_id || regulationRows[0]?.id || "",
         }));
       })
       .catch(() => {
-        setTasks(demoTasks);
-        setRegulations(demoRegulations);
+        setTasks([]);
+        setRegulations([]);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -255,6 +252,26 @@ export default function TasksPage() {
                         <div className="mt-6 space-y-4 text-sm text-slate-400">
                           <TaskMeta label="Source Regulation" value={sourceTitle(task.regulation_id, regulations)} />
                           <TaskMeta label="Traceability" value={task.remediation_draft_id ? task.remediation_draft_id.slice(0, 8).toUpperCase() : "Manual task"} />
+                          {task.jira_issue_key && (
+                            <TaskMeta
+                              label="Jira Ticket"
+                              value={
+                                task.jira_issue_url ? (
+                                  <a
+                                    href={task.jira_issue_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-cyan-400 hover:text-cyan-300 font-bold hover:underline inline-flex items-center gap-1"
+                                  >
+                                    {task.jira_issue_key}
+                                    <span className="text-[10px]">↗</span>
+                                  </a>
+                                ) : (
+                                  <span className="text-slate-300 font-semibold">{task.jira_issue_key}</span>
+                                )
+                              }
+                            />
+                          )}
                         </div>
                         {task.status === "PENDING_APPROVAL" ? (
                           <div className="mt-6 flex gap-2 w-full">
@@ -371,11 +388,11 @@ export default function TasksPage() {
   );
 }
 
-function TaskMeta({ label, value }: { label: string; value: string }) {
+function TaskMeta({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div>
       <p className="text-xs text-slate-500">{label}</p>
-      <p className="mt-1 line-clamp-2 text-sm font-semibold text-slate-300">{value}</p>
+      <div className="mt-1 line-clamp-2 text-sm font-semibold text-slate-300">{value}</div>
     </div>
   );
 }
