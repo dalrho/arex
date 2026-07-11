@@ -20,10 +20,11 @@ class Settings(BaseSettings):
 
     # -----------------------------------------------------------------------
     # AI Mode Configuration
-    # Set AI_MODE=online  → live Gemini API calls with real RAG
-    # Set AI_MODE=offline → deterministic mock responses (no LLM calls)
+    # Set AI_MODE=developer → Google Gemini for LLM + embeddings
+    # Set AI_MODE=hackathon → Fireworks AI for LLM + embeddings
+    # Set AI_MODE=offline   → deterministic mock responses (no LLM calls)
     # -----------------------------------------------------------------------
-    AI_MODE: str = "offline"  # "online" | "offline"
+    AI_MODE: str = "developer"
 
     # CORS Origins - parsed as list or comma-separated string
     CORS_ORIGINS: Union[List[str], str] = []
@@ -53,7 +54,8 @@ class Settings(BaseSettings):
     # Gemini API Settings (Online AI Mode)
     # -----------------------------------------------------------------------
     GEMINI_API_KEY: str = ""  # Set via GEMINI_API_KEY env var
-    GEMINI_MODEL_NAME: str = "models/gemini-3.1-flash-lite"
+    GEMINI_MODEL: str = "gemini-2.5-flash"
+    GEMINI_MODEL_NAME: str = "gemini-2.5-flash"
     GEMINI_EMBEDDING_MODEL: str = "gemini-embedding-001"
 
     # -----------------------------------------------------------------------
@@ -61,6 +63,7 @@ class Settings(BaseSettings):
     # -----------------------------------------------------------------------
     FIREWORKS_API_KEY: str = ""
     FIREWORKS_MODEL: str = "accounts/fireworks/models/qwen3-32b"
+    FIREWORKS_EMBEDDING_MODEL: str = "nomic-ai/nomic-embed-text-v1.5"
 
     # -----------------------------------------------------------------------
     # Jira Integration Settings
@@ -82,8 +85,9 @@ class Settings(BaseSettings):
 
     @property
     def is_online_mode(self) -> bool:
-        """Returns True if AI_MODE is set to 'online'."""
-        return self.AI_MODE.strip().lower() == "online"
+        """Returns True if AI_MODE is set to 'online', 'developer', or 'hackathon'."""
+        mode = self.AI_MODE.strip().lower()
+        return mode in ("online", "developer", "hackathon")
 
     @property
     def effective_gemini_key(self) -> str:
@@ -111,6 +115,24 @@ class Settings(BaseSettings):
             else:
                 formatted_parts.append(p.capitalize())
         return "-".join(formatted_parts)
+
+    @property
+    def active_provider(self) -> str:
+        mode = self.AI_MODE.strip().lower()
+        if mode == "developer":
+            return "Google Gemini"
+        elif mode == "hackathon":
+            return "Fireworks AI"
+        return "Offline Mode"
+
+    @property
+    def active_model_formatted(self) -> str:
+        mode = self.AI_MODE.strip().lower()
+        if mode == "developer":
+            return self.GEMINI_MODEL
+        elif mode == "hackathon":
+            return self.fireworks_model_formatted
+        return "Mock Model"
 
 
 settings = Settings()

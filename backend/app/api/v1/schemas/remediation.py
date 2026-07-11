@@ -29,13 +29,14 @@ class RemediationResponse(BaseModel):
     @computed_field
     @property
     def provider(self) -> str:
-        return "Fireworks AI"
+        from app.core.config import settings
+        return settings.active_provider
 
     @computed_field
     @property
     def model(self) -> str:
         from app.core.config import settings
-        return settings.fireworks_model_formatted
+        return settings.active_model_formatted
 
     # Aliases
     sopId: Optional[uuid.UUID] = None

@@ -20,8 +20,16 @@ class EmbeddingService:
         """Returns True when offline mock embeddings should be used."""
         if not self.settings.is_online_mode:
             return True
-        if not self.settings.effective_gemini_key:
-            return True
+        mode = self.settings.AI_MODE.strip().lower()
+        if mode == "developer":
+            if not self.settings.effective_gemini_key:
+                return True
+        elif mode == "hackathon":
+            if not self.settings.FIREWORKS_API_KEY or not self.settings.FIREWORKS_API_KEY.strip():
+                return True
+        else:
+            if not self.settings.effective_gemini_key:
+                return True
         return False
 
     def get_embedding(self, text: str) -> List[float]:
@@ -30,7 +38,7 @@ class EmbeddingService:
     def get_embeddings(self, texts: List[str]) -> List[List[float]]:
         """
         Returns embeddings for a list of texts.
-        Online Mode  → Google text-embedding-004 via generativeai SDK
+        Online Mode  → Google text-embedding-004 (Gemini) or Nomic Embed (Fireworks)
         Offline Mode → Deterministic mock embeddings (keyword-biased)
         """
         if self.is_offline_mode():
@@ -39,23 +47,69 @@ class EmbeddingService:
             )
             return [self._generate_mock_embedding(text) for text in texts]
 
+        mode = self.settings.AI_MODE.strip().lower()
+        if mode == "hackathon":
+            model = self.settings.FIREWORKS_EMBEDDING_MODEL
+            provider = "Fireworks"
+        else:
+            model = self.settings.GEMINI_EMBEDDING_MODEL
+            provider = "Gemini"
+
         logger.info(
             f"[EmbeddingService] Online mode: fetching real embeddings for "
-            f"{len(texts)} text(s) via {self.settings.GEMINI_EMBEDDING_MODEL}."
+            f"{len(texts)} text(s) via {provider} using {model}."
         )
         try:
-            return self._call_gemini_embeddings(texts)
+            if mode == "hackathon":
+                return self._call_fireworks_embeddings(texts)
+            else:
+                return self._call_gemini_embeddings(texts)
         except Exception as e:
             if not self.is_offline_mode():
                 logger.error(
-                    f"[EmbeddingService] Gemini embedding call failed: {e}."
+                    f"[EmbeddingService] {provider} embedding call failed: {e}."
                 )
                 raise e
             logger.error(
-                f"[EmbeddingService] Gemini embedding call failed: {e}. "
+                f"[EmbeddingService] {provider} embedding call failed: {e}. "
                 "Falling back to mock embeddings."
             )
             return [self._generate_mock_embedding(text) for text in texts]
+
+    def _call_fireworks_embeddings(self, texts: List[str]) -> List[List[float]]:
+        """Calls Fireworks AI embeddings API via HTTP request."""
+        import httpx
+        
+        url = "https://api.fireworks.ai/inference/v1/embeddings"
+        headers = {
+            "Authorization": f"Bearer {self.settings.FIREWORKS_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        model = self.settings.FIREWORKS_EMBEDDING_MODEL
+        payload = {
+            "input": texts,
+            "model": model,
+        }
+        
+        if "nomic" in model.lower():
+            payload["dimensions"] = 768
+
+        try:
+            with httpx.Client(timeout=30.0) as client:
+                response = client.post(url, headers=headers, json=payload)
+                response.raise_for_status()
+                data = response.json()
+        except Exception as exc:
+            logger.error(f"[EmbeddingService] Fireworks HTTP error: {exc}")
+            raise
+
+        embeddings = [item["embedding"] for item in data.get("data", [])]
+        logger.info(
+            f"[EmbeddingService] Successfully embedded {len(texts)} text(s) "
+            f"using {model}."
+        )
+        return embeddings
 
     def _call_gemini_embeddings(self, texts: List[str]) -> List[List[float]]:
         """Calls Google Gemini text-embedding-004 via the google.genai SDK."""
