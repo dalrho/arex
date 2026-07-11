@@ -231,16 +231,37 @@ def reset_application_data(
             counts["langgraph_checkpoints_reset"] = 0
 
         # ------------------------------------------------------------------
-        # 5. Reset Qdrant vector collection
-        #    All embeddings (SOP chunks + regulation chunks) are dropped.
+        # 5. Reset ALL Qdrant vector collections
+        #    Drops every collection in the vector DB (including stale ones
+        #    from previous backend versions, e.g. "sentinel_docs"), then
+        #    recreates the active "arex_docs" collection as empty.
         # ------------------------------------------------------------------
         try:
+            from qdrant_client import QdrantClient as RawQdrant
+            from app.core.config import settings
             from app.services.vector_db.qdrant_client import vector_db_client
-            vector_db_client.init_collection(force_recreate=True)
-            counts["vector_collections_reset"] = 1
-            logger.info("Qdrant vector collection reset successfully.")
+
+            raw_client = RawQdrant(url=settings.QDRANT_URL)
+            all_collections = raw_client.get_collections().collections
+            deleted_collections = []
+            for col in all_collections:
+                try:
+                    raw_client.delete_collection(col.name)
+                    deleted_collections.append(col.name)
+                    logger.info(f"Deleted Qdrant collection: '{col.name}'")
+                except Exception as ce:
+                    logger.warning(f"Could not delete Qdrant collection '{col.name}': {ce}")
+
+            # Recreate the active collection
+            vector_db_client.init_collection(force_recreate=False)
+            counts["vector_collections_reset"] = len(deleted_collections)
+            counts["vector_collections_deleted"] = deleted_collections
+            logger.info(
+                f"Qdrant reset complete: deleted {deleted_collections}, "
+                "recreated 'arex_docs'."
+            )
         except Exception as e:
-            logger.warning(f"Could not reset Qdrant collection: {e}")
+            logger.warning(f"Could not reset Qdrant collections: {e}")
             counts["vector_collections_reset"] = 0
 
         logger.warning("Admin reset complete — workspace is in a clean first-run state.")
