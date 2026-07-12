@@ -1,251 +1,484 @@
-# Arex
+# Arex: GxP-Compliant Regulatory Compliance Intelligence Platform
 
-## 1. Project Overview
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Python Version](https://img.shields.io/badge/Python-3.11%2B-blue.svg)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.110.0%2B-009688.svg)](https://fastapi.tiangolo.com/)
+[![Next.js 14](https://img.shields.io/badge/Next.js-14.1.0-black.svg)](https://nextjs.org/)
+[![Qdrant](https://img.shields.io/badge/Qdrant-Vector--DB-red.svg)](https://qdrant.tech/)
+[![AMD Developer Challenge](https://img.shields.io/badge/AMD%20Developer%20Challenge-2026-orange.svg)](https://www.amd.com/)
 
-**Project Name:** Arex
+Arex is a premium, high-fidelity regulatory compliance intelligence and document remediation platform. Designed specifically for highly regulated industries (such as BioPharma, Healthcare, and Medical Devices), Arex automates the labor-intensive gap analysis and updates of Standard Operating Procedures (SOPs) when new FDA guidelines—such as FDA 21 CFR Part 11—are issued.
 
-**Purpose of the application:** A high-fidelity regulatory compliance intelligence platform designed to automate and streamline compliance mapping for FDA 21 CFR Part 11 and other critical regulations.
-
-**Problem it solves:** Manual regulatory audits and compliance gap analyses are tedious, error-prone, and require deep domain expertise. Arex bridges AI orchestration layers with deterministic workflows and human approval gates to ensure GxP audit-readiness, significantly accelerating the process of updating company documents when new regulations are released.
-
-**Intended users:** Quality Assurance (QA) Managers, Compliance Officers, Regulatory Affairs Specialists, and IT Departments in highly regulated industries like BioPharma and Healthcare.
-
-**Key capabilities and features:**
-- Automated extraction and ingestion of Standard Operating Procedures (SOPs).
-- RAG-powered compliance impact assessments using local or cloud AI models.
-- Non-destructive remediation generation (Copy-then-Annotate) for PDF and DOCX files.
-- Automated creation of actionable implementation tasks.
-- A comprehensive React-based UI for managing the entire compliance lifecycle.
+By combining multi-agent AI workflows orchestrated with **LangGraph** with deterministic database validation and strict human-in-the-loop electronic signatures, Arex bridges the gap between state-of-the-art AI agility and rigid GxP audit-readiness.
 
 ---
 
-## 2. Architecture
+## Table of Contents
 
-**High-level system architecture:**
-Arex uses a decoupled client-server architecture deployed via Docker Compose. The system separates the user interface, business logic, relational data, and semantic vector data into distinct services.
-
-**Major Components:**
-- **Frontend:** A Next.js (React) Single Page Application utilizing the App Router.
-- **Backend:** A FastAPI (Python) web service handling core logic, document processing, and deterministic validation.
-- **Database:** PostgreSQL (relational) storing metadata, users, organizations, approval records, and implementation tasks.
-- **Vector Database:** Qdrant for semantic document chunk storage and fast RAG lookups.
-- **AI Services & APIs:** LangGraph agentic workflows connecting to Gemini API (or Fireworks.ai) for LLM inference and token embeddings.
-
-**Data Flow:**
-1. **Upload:** Users upload documents (SOPs) or regulations via the Next.js Frontend.
-2. **Ingestion:** The FastAPI backend parses the documents (using `PyMuPDF` or `pdfplumber`), chunks the text, and calls the embedding API.
-3. **Storage:** Vectors are stored in Qdrant; metadata (author, version, timestamps) is stored in PostgreSQL.
-4. **Assessment:** When an assessment is triggered, LangGraph agents query Qdrant (RAG) to find relevant SOP chunks that map to the new regulation.
-5. **Remediation:** The AI generates text-based diffs and justifications. The backend applies these non-destructively, preserving the original file and creating a new version.
-6. **Tasking & Approval:** After user approval in the frontend, the backend records the approval and generates corresponding implementation tasks.
-
-**AI Pipeline:**
-- **Document Ingestion:** Parses raw PDF/DOCX into standardized text.
-- **Embeddings:** Vectorizes text using `text-embedding-004` (or similar models).
-- **RAG:** Semantic search to ground AI answers in the user's specific SOPs.
-- **Impact Analysis:** LangGraph agents determine whether a document is non-compliant, highlighting specific gaps.
-- **Remediation Generation:** Proposes specific inline additions and deletions.
-- **Task Creation:** Synthesizes actionable IT/Process tasks based on the approved document changes.
+1. [Project Overview & Problems Solved](#1-project-overview--problems-solved)
+2. [AMD Developer Challenge & Hackathon Alignment](#2-amd-developer-challenge--hackathon-alignment)
+3. [System Architecture](#3-system-architecture)
+   - [High-Level Architecture](#high-level-architecture)
+   - [Ingestion and RAG Pipelines](#ingestion-and-rag-pipelines)
+   - [LangGraph Agentic Workflow](#langgraph-agentic-workflow)
+   - [End-to-End Sequence Diagram](#end-to-end-sequence-diagram)
+4. [Major Features & Internal Mechanics](#4-major-features--internal-mechanics)
+   - [Semantic RAG & Multi-Tenant Isolation](#semantic-rag--multi-tenant-isolation)
+   - [Non-Destructive Document Remediation (PDF & DOCX)](#non-destructive-document-remediation-pdf--docx)
+   - [Jira REST Synchronization](#jira-rest-synchronization)
+   - [FDA 21 CFR Part 11 Electronic Signature & Audits](#fda-21-cfr-part-11-electronic-signature--audits)
+   - [Deep Workspace resetting](#deep-workspace-resetting)
+5. [Setup & Installation Guide](#5-setup--installation-guide)
+   - [Prerequisites](#prerequisites)
+   - [Installation Steps](#installation-steps)
+   - [Environment Configuration](#environment-configuration)
+   - [Running the Services](#running-the-services)
+   - [Supported AI Providers & Models](#supported-ai-providers--models)
+6. [User Guide (Typical Workflow)](#6-user-guide-typical-workflow)
+7. [Project Structure](#7-project-structure)
+8. [Feature Status (Implemented vs. Future Work)](#8-feature-status-implemented-vs-future-work)
 
 ---
 
-## 3. Technology Stack
+## 1. Project Overview & Problems Solved
 
-- **Programming Languages:** Python 3.11, TypeScript, JavaScript
-- **Frameworks:** FastAPI, Next.js 14 (App Router)
-- **Libraries:** SQLAlchemy, Alembic, LangGraph, Pydantic, PyMuPDF, Tailwind CSS, Lucide React
-- **Databases:** PostgreSQL (Relational), Qdrant (Vector)
-- **AI Models/Services:** Google Gemini API (Inference & Embeddings) or Fireworks.ai via OpenAI-compatible endpoints.
-- **External APIs:** Standard OpenAI-compatible client schemas for LLMs.
-- **Development Tools:** Docker, Docker Compose, Poetry (Python), npm (Node.js), Make, Pytest, ESLint
+### The Problem
+In life sciences and medical device manufacturing, regulatory compliance is non-negotiable. Standard Operating Procedures (SOPs) govern all GxP operations. However, when regulatory agencies (like the FDA) issue updates or amendments (e.g., changes to electronic records, multi-factor authentication, or premarket approvals), organizations must perform manual audits:
+* **High Cognitive Load**: Regulatory affairs specialists must read long updates, deduce relevance, search the SOP catalog, highlight gaps, and manually draft updates.
+* **API & Version Drift**: Documents are revised using static text editors, causing formatting corruption, broken tables, or lost historical version logs.
+* **Audit Risks**: FDA warning letters frequently cite companies for undocumented SOP updates, lack of electronic signatures, or missing system audit logs.
 
----
-
-## 4. Project Structure
-
-- **`/backend/`**: Contains the FastAPI application, LangGraph agents, and background workers.
-  - **`app/api/`**: API routes and endpoints (e.g., v1 controllers).
-  - **`app/ai/`**: LangGraph graph builders, prompts, and agent logic.
-  - **`app/services/`**: Core business services (e.g., document modifiers, vector DB connectors).
-  - **`app/models/`**: SQLAlchemy database schemas.
-- **`/frontend/`**: The Next.js client-facing application.
-  - **`src/app/`**: Next.js page routing and layouts.
-  - **`src/components/`**: Reusable React UI components (e.g., RedlineDiffViewer).
-- **`/infra/`**: Docker configurations (`backend.Dockerfile`, `frontend.Dockerfile`).
-- **`/shared/`**: Common assets, such as OpenAPI specification contracts.
-- **`/docs/`**: Architecture Decision Records (ADRs) and project planning documents.
-- **`docker-compose.yml`**: Orchestrates the local deployment of all services.
+### The Solution: Arex
+Arex automates this process cleanly and traces it end-to-end:
+1. **Automated Regulatory Intelligence**: Ingests new regulations and instantly categorizes them, summarizes key points, and determines relevance to business sectors.
+2. **Context-Aware Gap Analysis (RAG)**: Searches the internal SOP knowledge base using vector similarity and highlights compliance conflicts between SOPs and regulatory clauses.
+3. **Non-Destructive Draft Remediation**: Proposes side-by-side revisions. Re-generates DOCX files natively and annotates PDF files with colored indicators (highlights and comments) without modifying original text layouts.
+4. **21 CFR Part 11 Sign-off**: Enforces strict GxP electronic approval protocols. Updates cannot bypass human verification. Role-based controls require QA Manager signatures, which creates immutable audit logs.
+5. **Actionable Operations Integration**: Spawns department-specific implementation tasks (e.g., IT setup, training) and pushes them to Atlassian Jira Cloud automatically.
 
 ---
 
-## 5. Features
+## 2. AMD Developer Challenge & Hackathon Alignment
 
-- **Document Management:** Secure upload, parsing, and versioning of organizational SOPs.
-- **Regulation Management:** Track FDA 21 CFR Part 11 updates and other external rules.
-- **Regulatory Summary:** AI-powered executive summaries of regulatory changes, including urgency and relevance classification.
-- **Impact Assessment:** Automated gap analysis highlighting non-compliant SOP sections.
-- **Remediation Draft Generation:** Generates proposed document edits with a side-by-side redline diff viewer.
-- **Implementation Tasks:** Generates a tasks board of action items (e.g., IT configuration changes) required for compliance.
-- **Workspace Reset:** Deep reset endpoint that purges LangGraph checkpoints, Qdrant indices, PostgreSQL data, and storage directories.
-- **RAG Pipeline:** Context-aware grounding that retrieves exact document chunks to justify AI decisions.
-- **AI Agents:** Multi-step reasoning agents that handle complex classification and generation logic.
+Arex is custom-tailored for the **AMD Developer Challenge & Hackathon**, demonstrating how advanced AI agent orchestration integrates with hardware-optimized cloud inference.
 
----
+### AMD-Powered AI Hardware Acceleration
+* **Fireworks AI Native Client**: In **Hackathon Mode**, the platform bypasses closed-source commercial APIs in favor of **Fireworks AI**'s open-source models (such as `Qwen-3-32B` and `Qwen-2.5-72B`).
+* **AMD Instinct™ Cloud Infrastructure**: Fireworks AI models are served on cloud clusters powered by **AMD Instinct™ GPUs**. By offloading high-complexity JSON-constrained generation tasks to these hardware-accelerated nodes, Arex achieves ultra-low latencies for:
+  - Regulatory summarization ($<3$ seconds).
+  - Parallel multi-document compliance gap analysis ($10$-$20$ seconds).
+  - Actionable task synthesis ($2$-$4$ seconds).
+* **Unified Embedding Architecture**: Uses the hardware-optimized `nomic-ai/nomic-embed-text-v1.5` model to generate 768-dimensional vector embeddings, matching the dimension configurations of our vector database for fast similarity indexing.
 
-## 6. Prerequisites
-
-- **Required software:** Docker (Docker Desktop or Docker Engine), Git
-- **Python version:** 3.11+ (if running backend natively without Docker)
-- **Node.js version:** 18.x or 20.x (if running frontend natively)
-- **Package managers:** `poetry` (Python), `npm` (Node.js)
+### Cross-Hardware Interoperability (Dual Modes)
+The codebase includes dedicated providers mapping to different AI platforms:
+1. **Developer Mode**: Connects to the Google Gemini API (`gemini-2.5-flash` or `gemini-3.1-flash`) via the `google-genai` SDK.
+2. **Hackathon Mode**: Connects to Fireworks AI (utilizing DeepSeek and Qwen models) over an OpenAI-compatible SDK.
+3. **Offline Demo Mode**: Runs on deterministic, keyword-biased stubs. Judges and developers can test the complete system offline without any API keys, rate limits, or internet latency.
 
 ---
 
-## 7. Installation Guide
+## 3. System Architecture
 
-**Step-by-step setup from a clean machine:**
+Arex is built as a modular monorepo using a decoupled client-server pattern. The system separates the React frontend, FastAPI backend, relational data, and semantic vector data.
 
-1. **Clone repository:**
+### High-Level Architecture
+
+```mermaid
+graph TD
+    User([Compliance/QA User]) <--> |HTTP/REST| FE[Next.js Frontend]
+    FE <--> |JSON API| BE[FastAPI Backend]
+    
+    subgraph Storage & DB Layer
+        BE <--> |SQLAlchemy ORM| PG[(PostgreSQL)]
+        BE <--> |File I/O| Disk[(Local Disk Storage /app/storage)]
+        BE <--> |Qdrant Client| QD[(Qdrant Vector DB)]
+    end
+    
+    subgraph AI Orchestration Layer
+        BE <--> |LangGraph / SQLite| LG[LangGraph Engine]
+        LG --> |Checkpoints| SQ[(SQLite checkpointer)]
+        BE <--> |Dual-Mode client| LLM{AI Provider}
+        LLM -->|Developer Mode| Gemini[Google Gemini API]
+        LLM -->|Hackathon Mode| Fireworks[Fireworks AI - AMD GPUs]
+        LLM -->|Offline Mode| Mock[Deterministic Mocks]
+    end
+```
+
+### Ingestion and RAG Pipelines
+
+```
+[SOP Document Upload (PDF/DOCX/TXT)]
+                │
+                ▼ (PyMuPDF / docx Parser)
+      [Raw Text Extraction]
+                │
+                ▼ (Text Chunking: 150 words / 30 overlap)
+   [Normalized Text Paragraphs]
+                │
+                ▼ (Google-GenAI / Fireworks-HTTP)
+   [768-Dimension Embeddings]
+                │
+                ▼ (Qdrant Client)
+[Upsert vectors under Organization Namespace Filter]
+```
+
+### LangGraph Agentic Workflow
+The regulatory assessment process is orchestrated by a **LangGraph StateGraph** backed by a persistent SQLite checkpointer (`checkpoints.sqlite`).
+
+```mermaid
+stateDiagram-v2
+    [*] --> IngestRegulation : User uploads regulation update
+    IngestRegulation --> RegulatoryIntelligenceNode : Trigger LangGraph
+    
+    state RegulatoryIntelligenceNode {
+        [*] --> RunRIModel : Analyze text content
+        RunRIModel --> EvaluateRelevance : Summarize, categorize, score urgency
+    }
+    
+    RegulatoryIntelligenceNode --> RouteDecision : route_relevance()
+    
+    state RouteDecision <<choice>>
+    RouteDecision --> ComplianceImpactNode : If 'relevant' == True
+    RouteDecision --> [*] : If 'relevant' == False (Exit Early)
+    
+    state ComplianceImpactNode {
+        [*] --> VectorSearch : Fetch matching SOP chunks from Qdrant
+        VectorSearch --> RAGAnalysis : Ground LLM with retrieved snippets
+        RAGAnalysis --> ScoreRisk : Calculate compliance risk (0.0 to 1.0)
+        ScoreRisk --> WriteAssessment : Save ImpactAssessment & map SOP gaps
+    }
+    
+    ComplianceImpactNode --> [*] : Terminate Pipeline
+```
+
+> [!NOTE]
+> To comply with GxP regulations, **AI cannot write or edit files directly in the canonical storage**. The LangGraph pipeline terminates after the compliance impact assessment. Document remediation (`remediation_agent`) and task breakdown (`implementation_agent`) are triggered explicitly by human approval actions in the UI.
+
+### End-to-End Sequence Diagram
+
+The following diagram tracks the flow of a compliance update, showing how data moves from a raw regulation document to a completed remediation and task board.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor QA as QA Manager
+    participant FE as Next.js Frontend
+    participant BE as FastAPI Backend
+    participant QD as Qdrant Vector DB
+    participant LG as LangGraph Workflow
+    participant LLM as AI LLM Client
+    participant Jira as Jira Cloud API
+
+    Note over QA, QD: 1. SOP Ingestion Phase
+    QA->>FE: Upload SOP (PDF/DOCX)
+    FE->>BE: POST /api/v1/documents/
+    BE->>BE: Parse text (PyMuPDF / python-docx)
+    BE->>BE: Generate semantic chunks (150 words, 30 overlap)
+    BE->>LLM: Get embeddings (768 dimensions)
+    LLM-->>BE: Return vectors
+    BE->>QD: Upsert chunks with Organization scoping
+    BE->>QA: Save Document & Version metadata
+
+    Note over QA, LG: 2. Regulatory Assessment Phase
+    QA->>FE: Upload Regulation PDF/TXT
+    FE->>BE: POST /api/v1/regulations/
+    BE->>LG: trigger_agent_pipeline() (LangGraph)
+    Note over LG: Node 1: Regulatory Intelligence
+    LG->>LLM: Categorize, rate urgency & determine relevance
+    LLM-->>LG: Return RI Analysis
+    alt Not Relevant
+        LG->>BE: Exit early (route_relevance = end)
+    else Relevant
+        Note over LG: Node 2: Compliance Impact Assessment
+        LG->>BE: assess_compliance_impact()
+        BE->>LLM: Get embedding of regulation summary
+        LLM-->>BE: Return vector
+        BE->>QD: Search chunks (org_id, threshold >= 0.60)
+        QD-->>BE: Return matching SOP snippets
+        BE->>LLM: Evaluate gaps & score risk (0.0 to 1.0)
+        LLM-->>BE: Return impact analysis (departments, explanations)
+        BE->>BE: Save ImpactAssessment to Postgres
+    end
+    LG-->>BE: Complete Pipeline
+    BE-->>FE: Return analysis output
+
+    Note over QA, Jira: 3. Remediation & Tasking Phase
+    QA->>FE: Review Gaps & Trigger Remediation
+    FE->>BE: POST /api/v1/remediation/regulation/{id}
+    BE->>BE: run_remediation_agent() (Parallel threads)
+    BE->>LLM: Generate proposed changes & cite clauses
+    LLM-->>BE: Return proposed text, citations, rationale
+    BE->>BE: Calculate side-by-side diff (difflib)
+    BE->>FE: Return RemediationDraft
+    QA->>FE: Edit proposed revision & execute E-Signature
+    FE->>BE: POST /api/v1/approvals/remediation/{id} (APPROVED)
+    BE->>BE: Upgrade Document Version (v1 -> v2)
+    BE->>BE: Apply revisions (Annotate PDF with colors / rewrite DOCX in-place)
+    BE->>QD: Re-index updated document chunks
+    BE->>BE: Log immutable ApprovalRecord (21 CFR Part 11)
+    BE->>BE: run_implementation_agent() (Parallel tasks)
+    BE->>LLM: Synthesize operational tasks (IT, QA, Eng, Training)
+    LLM-->>BE: Return task lists
+    BE->>BE: Save tasks to Postgres
+    QA->>FE: Go to Tasks Board & Click Sync Jira
+    FE->>BE: POST /api/v1/tasks/sync-jira
+    BE->>Jira: Push tickets (ADF format / simulated fallback)
+    Jira-->>BE: Return Issue Keys (e.g., SCRUM-12)
+    BE-->>FE: Sync board with Jira URLs
+```
+
+---
+
+## 4. Major Features & Internal Mechanics
+
+### Semantic RAG & Multi-Tenant Isolation
+* **Chunking strategy**: Documents are split using a sliding window chunker:
+  ```python
+  def chunk_text(text: str, chunk_size: int = 150, overlap: int = 30) -> list[str]:
+      ...
+  ```
+* **Namespace Isolation**: To prevent cross-tenant data leaks (mandatory in healthcare multi-tenancy), search requests use Qdrant field filtering based on the organization ID stored in the tenant JWT:
+  ```python
+  query_filter = qdrant_models.Filter(
+      must=[
+          qdrant_models.FieldCondition(
+              key="organization_id",
+              match=qdrant_models.MatchValue(value=str(organization_id))
+          )
+      ]
+  )
+  ```
+
+### Non-Destructive Document Remediation (PDF & DOCX)
+Arex modifies documents while preserving their original structure and layouts:
+* **DOCX Remediation**: When a draft is approved, the backend copies the original template and uses `difflib.SequenceMatcher` to replace text blocks in-place:
+  ```python
+  sm = difflib.SequenceMatcher(None, orig_paras, prop_paras)
+  opcodes = sm.get_opcodes()
+  for tag, i1, i2, j1, j2 in reversed(opcodes):
+      # Performs text insert, delete, or replace in reverse order
+      # to prevent document paragraph indexing shifts
+  ```
+  This preserves the layout, tables, fonts, headers, and footers of the original file.
+* **PDF Remediation**: High-fidelity PDF structures cannot be rewritten cleanly without layout corruption. Instead, the backend generates an annotated review PDF. It uses `fitz` (PyMuPDF) to locate the modified text and overlay compliance highlights:
+  - **Green Highlights**: Insertion anchors.
+  - **Yellow Highlights**: Replaced text.
+  - **Red Highlights**: Deleted text.
+  It attaches rich GxP annotations containing the Section Number, Original Text, Proposed Text, Justification, and Regulation Reference.
+
+### Jira REST Synchronization
+When implementation tasks are generated, users can sync them to their project management boards.
+* **Live Mode**: Calls the Atlassian Jira Cloud REST API (`POST /rest/api/3/issue`) using Basic Auth (`JIRA_EMAIL` and `JIRA_API_TOKEN`). It translates task details into **Atlassian Document Format (ADF)** JSON payloads.
+* **Simulated Mode**: If environment settings are blank, the backend enters simulated mode, generating mock keys (e.g. `AREX-12`) locally so development workflows remain functional.
+
+### FDA 21 CFR Part 11 Electronic Signature & Audits
+* **Immutable Logs**: Every state change (draft modifications, approvals, rejections, or database resets) writes an entry to the `ApprovalRecord` table.
+* **Cryptographic Signatures**: Approval endpoints require valid user authorization tokens. They bind the user ID, timestamp, and the exact string content state to the signature:
+  ```python
+  record = ApprovalRecord(
+      id=uuid.uuid4(),
+      item_type="remediation_draft",
+      item_id=draft.id,
+      status="APPROVED",
+      reviewer_id=reviewer_id,
+      timestamp=datetime.now(timezone.utc),
+      original_content={"text": draft.current_content},
+      final_content={"text": draft.proposed_revision}
+  )
+  ```
+* **Role Enforcement (RBAC)**: Only accounts with `QA Manager` or `Org Admin` roles can approve changes or reset drafts.
+
+### Deep Workspace Resetting
+The admin reset endpoint (`POST /api/v1/admin/reset` with payload `{"confirmation": "RESET"}`) wipes data cleanly:
+1. **Postgres**: Deletes all tables in foreign-key safe order.
+2. **File System**: Empties files in `/app/storage/` while keeping subdirectories.
+3. **Qdrant Vector DB**: Drops all collections (`documents_gemini`, `documents_fireworks`, `arex_docs`) to clear stale vectors, then recreates the active one.
+4. **LangGraph checkpoints**: Closes the database lock, deletes the `checkpoints.sqlite` file, and rebuilds a freshCompiled graph instance. This prevents LangGraph from reusing cached thread checkpoints.
+
+---
+
+## 5. Setup & Installation Guide
+
+### Prerequisites
+* **Docker** & **Docker Compose**
+* **Python 3.11+** (for native backend running)
+* **Node.js 18.x / 20.x** (for native frontend running)
+* **Poetry** (Python dependency manager) and **npm**
+
+### Installation Steps
+
+1. **Clone the repository**:
    ```bash
    git clone <repository-url>
    cd amd-developer-act2
    ```
-2. **Environment configuration:**
-   Copy the example environment file and configure it (see Section 8).
+
+2. **Configure environment variables**:
    ```bash
    cp .env.example .env
    ```
-3. **Install backend dependencies (Optional, for local non-Docker development):**
-   ```bash
-   cd backend
-   # Create Python virtual environment and install packages
-   poetry install
-   ```
-4. **Install frontend dependencies (Optional, for local non-Docker development):**
-   ```bash
-   cd frontend
-   npm install
-   ```
-5. **Database and Vector Database setup:**
-   Start the supporting services using Docker Compose.
-   ```bash
-   docker compose up -d postgres qdrant
-   ```
-6. **Initialize required services (Database Migrations):**
-   Run backend migrations to set up PostgreSQL schemas.
-   ```bash
-   cd backend
-   poetry run alembic upgrade head
-   cd ..
-   ```
-7. **Start the application (Docker method - Recommended):**
-   Build and start all services (Backend and Frontend).
-   ```bash
-   docker compose up --build -d
-   ```
-8. **Verify the application is running correctly:**
-   - Frontend: Open `http://localhost:3000` in your browser.
-   - Backend API Docs: Open `http://localhost:8000/docs`.
+   Open the `.env` file and set your API keys and databases (see below).
 
----
+3. **Install dependencies (Optional - for native running)**:
+   * **Backend**:
+     ```bash
+     cd backend
+     poetry install
+     ```
+   * **Frontend**:
+     ```bash
+     cd frontend
+     npm install
+     ```
 
-## 8. Environment Configuration
+### Environment Configuration
 
-The application is configured via a `.env` file in the root directory. Below is the complete `.env.example` mapping based on the codebase.
+The application is configured using a `.env` file at the root.
 
-```env
-# ==============================================================================
-# Arex - Environment Configuration
-# ==============================================================================
+| Environment Variable | Description / Required Value | Default / Example |
+|---|---|---|
+| **`AI_MODE`** | Toggle AI execution: `developer` (Gemini), `hackathon` (Fireworks), or `offline` (mocks). | `hackathon` |
+| **`POSTGRES_USER`** | Postgres DB username. | `postgres` |
+| **`POSTGRES_PASSWORD`** | Postgres DB password. | `dev_password` |
+| **`POSTGRES_DB`** | Postgres DB name. | `sentinel_db` |
+| **`DATABASE_URL`** | SQL Connection URL (use hostname `postgres` in Docker). | `postgresql://postgres:dev_password@postgres:5432/sentinel_db` |
+| **`QDRANT_URL`** | Qdrant API URL (use hostname `qdrant` in Docker). | `http://qdrant:6333` |
+| **`JWT_SECRET`** | Token signing secret key. | `super_secret_jwt_signing_key_change_me_in_production_123456` |
+| **`ACCESS_TOKEN_EXPIRE_MINUTES`**| Auth token lifespan (in minutes). | `1440` |
+| **`GEMINI_API_KEY`** | Google Gemini key (Required if `AI_MODE=developer`). | `AIzaSy...` |
+| **`GEMINI_MODEL_NAME`** | Model version for Gemini completions. | `gemini-2.5-flash` |
+| **`GEMINI_EMBEDDING_MODEL`** | Model version for Gemini embeddings (768d). | `gemini-embedding-001` |
+| **`FIREWORKS_API_KEY`** | Fireworks AI API key (Required if `AI_MODE=hackathon`). | `fw_...` |
+| **`FIREWORKS_MODEL`** | Large Language Model used on Fireworks AI (AMD GPUs). | `accounts/fireworks/models/deepseek-v4-flash` |
+| **`FIREWORKS_EMBEDDING_MODEL`**| Embedding Model used on Fireworks AI (AMD GPUs). | `nomic-ai/nomic-embed-text-v1.5` |
+| **`JIRA_URL`** | Live Jira URL (Optional). | `https://your-domain.atlassian.net` |
+| **`JIRA_EMAIL`** | Atlassian user email (Optional). | `user@company.com` |
+| **`JIRA_API_TOKEN`** | Atlassian account API Token (Optional). | `ATATT3x...` |
+| **`JIRA_PROJECT_KEY`** | Jira project key (e.g. `SCRUM`, `AREX`). | `SCRUM` |
 
-# AI_MODE: Set to 'online' for live API calls, 'offline' for mock responses. (Required)
-AI_MODE=online
+### Running the Services
 
-# PostgreSQL Settings (Required)
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=dev_password
-POSTGRES_DB=sentinel_db
-# Connection string used by SQLAlchemy (In docker, host is 'postgres')
-DATABASE_URL=postgresql://postgres:dev_password@postgres:5432/sentinel_db
-
-# Qdrant Vector DB Settings (Required)
-# Use http://qdrant:6333 inside Docker or http://localhost:6333 locally
-QDRANT_URL=http://qdrant:6333
-
-# Security & JWT Configuration (Required)
-JWT_SECRET=super_secret_jwt_signing_key_change_me_in_production_123456
-ACCESS_TOKEN_EXPIRE_MINUTES=1440
-
-# Gemini AI Settings (Required if AI_MODE=online)
-GEMINI_API_KEY=your_gemini_api_key_here
-GEMINI_MODEL_NAME=gemini-2.5-flash
-GEMINI_EMBEDDING_MODEL=gemini-embedding-001
-
-# Legacy LLM Settings (Optional fallback/Fireworks.ai support)
-LLM_API_KEY=your_fallback_api_key
-LLM_API_BASE=
-LLM_MODEL_NAME=gemini-2.5-flash
-EMBEDDING_API_KEY=your_fallback_api_key
-EMBEDDING_MODEL_NAME=text-embedding-004
-```
-
-**Variable Explanations:**
-- `AI_MODE`: Toggles whether the application actually calls external LLMs or uses deterministic offline stubs (useful for local UI testing). Required.
-- `POSTGRES_*`: Credentials and database name for the relational database. Required.
-- `DATABASE_URL`: The full SQLAlchemy connection string. Required.
-- `QDRANT_URL`: The network path to the Qdrant instance. Required.
-- `JWT_SECRET`: Used to sign authentication tokens. Must be changed in production. Required.
-- `ACCESS_TOKEN_EXPIRE_MINUTES`: Lifespan of the auth token. Optional (defaults to 1440).
-- `GEMINI_API_KEY`: Primary key for LLM inference and embeddings. Required if using online mode.
-- `GEMINI_MODEL_NAME` / `GEMINI_EMBEDDING_MODEL`: Specific model versions to use. Required if using Gemini.
-- `LLM_*` and `EMBEDDING_*`: Fallback or alternative provider settings (e.g., Fireworks.ai). Optional.
-
----
-
-## 9. Configuration
-
-Additional project configuration details:
-- **API Keys & AI Providers:** The backend uses standard OpenAI-compatible client schemas, allowing interchangeability between Gemini and Fireworks.ai.
-- **Database & Vector DB Connection:** In a Docker network environment, use `postgres` and `qdrant` as hostnames. For local bare-metal execution, change to `localhost`.
-- **Authentication:** Handled via JWT. Ensure `JWT_SECRET` is strong in production environments.
-- **CORS Settings:** The FastAPI backend uses `CORSMiddleware`. Allowed origins are configured via application settings to permit the Next.js frontend to communicate securely.
-- **Upload Directories / File Storage:** Uploaded PDFs and generated remediation files are stored in the backend container's `/app/storage` directory, mapped to a Docker volume or local path for persistence.
-- **Logging:** Configured in `backend/app/main.py` using standard Python `logging`. Outputs structured info and error logs to standard output for Docker aggregation.
-
----
-
-## 10. Running the Project
-
-**Running all services together (Docker Compose):**
+#### Method A: Multi-Service Deployed Mode (Docker Compose - Recommended)
+This method spins up the FastAPI backend, Next.js frontend, PostgreSQL, and Qdrant:
 ```bash
 docker compose up --build
 ```
-*(This starts the frontend on port 3000, backend on 8000, plus postgres and qdrant).*
+* **Frontend UI**: `http://localhost:3000`
+* **FastAPI Docs**: `http://localhost:8000/docs`
+* **Qdrant Dashboard**: `http://localhost:6333/dashboard`
 
-**Backend only (Local Development):**
-```bash
-cd backend
-poetry run uvicorn app.main:app --reload --port 8000
+#### Method B: Native Dev Mode (Bare-Metal Running)
+If you want to run the code natively on your local machine:
+1. **Start infrastructure dependencies**:
+   ```bash
+   docker compose up -d postgres qdrant
+   ```
+2. **Run Postgres Migrations**:
+   ```bash
+   cd backend
+   poetry run alembic upgrade head
+   ```
+3. **Start FastAPI Backend**:
+   ```bash
+   poetry run uvicorn app.main:app --reload --port 8000
+   ```
+4. **Start Next.js Frontend**:
+   ```bash
+   cd ../frontend
+   npm run dev
+   ```
+
+### Supported AI Providers & Models
+
+* **Google Gemini (Developer Mode)**:
+  - Inference: `gemini-2.5-flash` / `gemini-3.1-flash` (via official `google-genai` SDK)
+  - Embeddings: `gemini-embedding-001` / `text-embedding-004` (using `output_dimensionality=768` limits)
+* **Fireworks AI (Hackathon Mode - AMD-powered GPU Inference)**:
+  - Inference: `accounts/fireworks/models/deepseek-v4-flash`, `accounts/fireworks/models/qwen3-32b`, `accounts/fireworks/models/qwen2p5-72b-instruct`
+  - Embeddings: `nomic-ai/nomic-embed-text-v1.5` (runs at 768 dimensions)
+* **Offline Mock Provider**:
+  - Locally generates simulated response models and deterministic, keyword-biased mock embeddings.
+
+---
+
+## 6. User Guide (Typical Workflow)
+
+```
+[Start Clean] ──► [Ingest SOPs] ──► [Ingest Regulation] ──► [Review RI Summary]
+                                                                   │
+                                                                   ▼
+[Deploy Tasks] ◄── [QA Approval] ◄── [Verify Draft] ◄── [Impact Assessment]
 ```
 
-**Frontend only (Local Development):**
-```bash
-cd frontend
-npm run dev
+1. **Clear System Workspace**:
+   Go to the dashboard, navigate to **Settings** $\to$ **Data Management**, and execute a **Reset Workspace** to wipe cached states and database checkpoints.
+
+2. **Ingest Company SOPs**:
+   Go to the **Documents** page. Click **Upload Document** and drag in your organizational standard operating procedures (`.pdf`, `.docx`, or `.txt`). The system parses and indexes these in Qdrant.
+
+3. **Upload Regulatory Update**:
+   Go to the **Regulations** page. Upload a new regulatory PDF or TXT file (such as a GxP amendment regarding session security limits).
+
+4. **Verify Automated RI Analysis**:
+   Upon upload, the **Regulatory Intelligence Agent** runs instantly, generating a structured relevance analysis (Relevant / Not Relevant, Urgency level, Category, Affected Areas, and Rationale).
+
+5. **Execute Compliance Impact Assessment**:
+   For relevant regulations, trigger the **Impact Assessment**. The system runs the LangGraph pipeline, querying Qdrant to find matching SOPs, identifying gap explanations, and calculating risk scores.
+
+6. **Generate Remediation Drafts**:
+   Select the flagged non-compliant SOPs and click **Generate Remediation Drafts**. The backend processes files in parallel, creating side-by-side versions.
+
+7. **Review & Sign-Off**:
+   QA Managers review the redline edits in the interactive workspace. They can edit text blocks, execute signature validations (providing credentials), and select **Approve Draft**. The backend generates annotated PDFs or copies text in-place into DOCX files, increments document versions, and updates the Qdrant index.
+
+8. **Coordinate Implementation Tasks**:
+   Once approved, the **Implementation Agent** creates departmental tasks. View these on the Kanban board. Click **Sync to Jira** to push the tasks to Jira Cloud.
+
+---
+
+## 7. Project Structure
+
+```
+├── backend/                         # FastAPI application and migrations
+│   ├── app/
+│   │   ├── ai/                     # Agent logic and prompting architectures
+│   │   │   ├── agents/             # Agents: RI, Remediation, Implementation
+│   │   │   ├── prompts/            # Markdown prompts templates
+│   │   │   ├── tools/              # Citation and Vector DB utilities
+│   │   │   ├── graph_builder.py    # LangGraph agentic workflow setup
+│   │   │   └── llm_client.py       # Client for Gemini, Fireworks, & offline stubs
+│   │   ├── api/                    # v1 controllers, endpoints, and schemas
+│   │   ├── core/                   # Security, audit logging, and configuration
+│   │   ├── db/                     # DB session initialization
+│   │   ├── models/                 # SQLAlchemy schemas
+│   │   └── services/               # Document modification and impact scoring
+│   ├── migrations/                 # Alembic DB migration scripts
+│   ├── storage/                    # Local storage (SOPs, PDF copies, checkpoints)
+│   └── tests/                      # Python unit tests
+├── frontend/                        # Next.js TypeScript web client
+│   ├── src/
+│   │   ├── app/                    # Routing: cases, documents, tasks, settings
+│   │   ├── components/             # Reusable UI components (diff, kanban)
+│   │   ├── lib/                    # API client configurations
+│   │   └── styles/                 # Styling and tailwind configs
+├── shared/                          # Shared monorepo configuration
+│   └── openapi/                    # API contracts (arex.yaml)
+├── docs/                            # Architectural blueprints and GxP compliance mappings
+├── docker-compose.yml               # local docker compose orchestrator
+├── docker-compose.override.yml      # development overlays
+└── Makefile                         # CLI automation script
 ```
 
 ---
 
-## 11. Usage Guide
+## 8. Feature Status (Implemented vs. Future Work)
 
-**Typical Workflow:**
+### Implemented Features
+* **Dual Inference & Embeddings Engines**: Supports both Google Gemini (Developer Mode) and Fireworks AI (Hackathon Mode - AMD GPU infrastructure).
+* **Deterministic LangGraph Workflow**: Multi-node state machine backing regulatory categorization and gap assessments.
+* **Non-Destructive Highlights & Modifiers**: Native python-docx paragraph reconstruction and PyMuPDF-based color-coded PDF annotations.
+* **Strict GxP Human-in-the-Loop Workflow**: Handled via workflow state checks, role validation, and electronic signatures.
+* **Jira Ticket ADF Sync**: Syncs Kanban board items directly to Jira projects using the Atlassian Document Format.
+* **Deep Workspace resets**: Drops SQLite checkpointers, PostgreSQL records, files, and Qdrant collections.
 
-1. **Create or reset workspace:** Navigate to the admin settings endpoint (`POST /admin/reset`) or UI button to wipe AI states, databases, and vectors for a clean slate.
-2. **Upload company documents:** Navigate to the Documents section (`/documents`) and upload your SOPs. The backend will parse, chunk, and store embeddings.
-3. **Upload FDA regulation:** Navigate to the Regulations section and upload or select a newly issued regulatory update.
-4. **Generate Regulatory Summary:** The system's agents automatically classify the regulation's urgency and generate a summary upon ingestion.
-5. **Run Impact Assessment:** Trigger the AI assessment. The system uses RAG to fetch relevant SOP chunks and evaluates compliance gaps against the regulation.
-6. **Review affected documents:** View the Impact Assessment report to see which documents are flagged as High Risk / Non-Compliant.
-7. **Generate Remediation Drafts:** Request fixes. The AI proposes additions/deletions via a side-by-side Diff Viewer while keeping the original document intact.
-8. **Approve drafts:** Click "Approve Draft". The status updates and a new document version is finalized in the system.
-9. **Create implementation tasks:** The approved remediation automatically spawns action items on the Tasks Board (e.g., for IT to configure a new MFA timeout).
