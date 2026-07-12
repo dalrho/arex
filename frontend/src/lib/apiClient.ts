@@ -23,7 +23,9 @@ export interface AIStatusResponse {
   reason: string | null;
 }
 
-const API_BASE = "/api/v1";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL
+  ? `${process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, "")}/api/v1`
+  : "/api/v1";
 const DEFAULT_TENANT_ID = "9280d0d8-5527-4632-bd92-4fcf05c75462";
 
 const TOKEN_KEY = "arex_token";

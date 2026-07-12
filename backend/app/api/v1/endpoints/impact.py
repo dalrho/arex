@@ -75,6 +75,44 @@ def trigger_impact_assessment(
         
         # Update case status
         reg.status = "Impact Assessment Complete"
+
+        # Refresh stale/failed upload-time classification so Regulatory Summary
+        # is not stuck on an old LLM ImportError after impact succeeds.
+        clf = {}
+        if isinstance(reg.parsed_sections, dict):
+            clf = dict(reg.parsed_sections.get("classification") or {})
+        clf_rationale = str(clf.get("rationale") or "")
+        needs_reclassify = (
+            not clf
+            or clf_rationale.startswith("Analysis failed due to error:")
+            or "fireworks-ai package is not installed" in clf_rationale
+        )
+        if needs_reclassify and reg.raw_content:
+            try:
+                from app.ai.graph_builder import trigger_agent_pipeline
+                final_state = trigger_agent_pipeline(
+                    regulation_id=str(reg.id),
+                    organization_id=tenant_id,
+                    raw_content=reg.raw_content,
+                )
+                sections = dict(reg.parsed_sections) if isinstance(reg.parsed_sections, dict) else {}
+                sections["classification"] = {
+                    "relevant": final_state.get("relevant", False),
+                    "category": final_state.get("category", "other"),
+                    "urgency": final_state.get("urgency", "low"),
+                    "affected_business_areas": final_state.get("affected_business_areas", []),
+                    "rationale": final_state.get("rationale", ""),
+                }
+                reg.parsed_sections = sections
+                from sqlalchemy.orm.attributes import flag_modified
+                flag_modified(reg, "parsed_sections")
+            except Exception as reclass_err:
+                # Impact assessment itself succeeded; keep prior classification.
+                import logging
+                logging.getLogger("arex.api.impact").warning(
+                    "Classification refresh skipped after impact assess: %s", reclass_err
+                )
+
         db.add(reg)
         db.commit()
         
