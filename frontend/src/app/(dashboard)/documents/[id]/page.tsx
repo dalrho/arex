@@ -394,6 +394,15 @@ export default function DocumentDetailPage() {
                               typeLabel = "Insertion suggestion";
                             }
 
+                            const pageList =
+                              annot.pages && annot.pages.length > 0
+                                ? annot.pages
+                                : [annot.page];
+                            const pageLabel =
+                              pageList.length > 1
+                                ? `Pages ${pageList.join(", ")}`
+                                : `Page ${pageList[0]}`;
+
                             return (
                               <div
                                 key={annot.id}
@@ -407,7 +416,7 @@ export default function DocumentDetailPage() {
                                     </span>
                                   </div>
                                   <span className="text-[10px] font-bold text-slate-500 uppercase">
-                                    Page {annot.page} • {typeLabel}
+                                    {pageLabel} • {typeLabel}
                                   </span>
                                 </div>
 

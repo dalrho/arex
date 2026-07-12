@@ -18,6 +18,60 @@ def find_section_number(lines, index):
             return match.group(1)
     return None
 
+
+def _rect_key(rect, precision=1):
+    """Round rect coords for geometric deduplication."""
+    return (
+        round(rect.x0, precision),
+        round(rect.y0, precision),
+        round(rect.x1, precision),
+        round(rect.y1, precision),
+    )
+
+
+def _dedupe_rects(rects):
+    """Keep unique rects by rounded geometry (first occurrence wins)."""
+    seen = set()
+    unique = []
+    for rect in rects:
+        key = _rect_key(rect)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(rect)
+    return unique
+
+
+def _search_line_rects(page, line):
+    """Exact text search only — avoid short-substring false positives."""
+    if not line:
+        return []
+    return list(page.search_for(line)) or []
+
+
+def _action_fingerprint(title, section, orig_text, proposed_text, justification, regulation_reference):
+    return (
+        title,
+        section or "N/A",
+        orig_text or "",
+        proposed_text or "",
+        justification or "",
+        regulation_reference or "",
+    )
+
+
+def _add_highlight(page, rects, title, annot_content, stroke):
+    """Write one content-bearing highlight covering all rects on this page."""
+    unique_rects = _dedupe_rects(rects)
+    if not unique_rects:
+        return
+    # PyMuPDF accepts a single Rect or a list of quads/rects for one annot
+    annot = page.add_highlight_annot(unique_rects if len(unique_rects) > 1 else unique_rects[0])
+    annot.set_colors(stroke=stroke)
+    annot.set_info(title=title, content=annot_content)
+    annot.update()
+
+
 def apply_remediation(
     original_file_path: str,
     new_file_path: str,
@@ -127,37 +181,58 @@ def apply_remediation(
     elif ext == ".pdf":
         try:
             # For PDF, do NOT modify the document text. Instead, generate an annotated review PDF.
-            # Open the original PDF as read-only template
+            # Build canonical unique remediation actions first, then write one highlight
+            # annotation per action per page (multi-quad), never one card per rect.
             doc = fitz.open(original_file_path)
-            
+
             original_lines = original_text.splitlines()
             proposed_lines = proposed_text.splitlines()
-            
+
+            just = justification if justification else "AI Compliance Recommendation"
+            reg_ref = regulation_reference if regulation_reference else "FDA Regulation"
+
+            # fingerprint -> {title, section, orig, proposed, justification, regulation, pages: {page_idx: [rects]}}
+            actions = {}
+
             sm = difflib.SequenceMatcher(None, original_lines, proposed_lines)
-            opcodes = sm.get_opcodes()
-            
-            for tag, i1, i2, j1, j2 in opcodes:
-                if tag == 'equal':
+            for tag, i1, i2, j1, j2 in sm.get_opcodes():
+                if tag == "equal":
                     continue
-                    
+
                 rem_lines = [line.strip() for line in original_lines[i1:i2] if line.strip()]
                 add_text = "\n".join(proposed_lines[j1:j2]).strip()
-                
-                # Extract section number from original lines
-                section_num = find_section_number(original_lines, i1)
-                
-                # Format annotation contents
+                section_num = find_section_number(original_lines, i1) or "N/A"
                 orig_text_block = "\n".join(rem_lines) if rem_lines else "N/A (Insertion)"
-                annot_content = (
-                    f"Section: {section_num if section_num else 'N/A'}\n"
-                    f"Original Text: {orig_text_block}\n"
-                    f"Proposed Text: {add_text if add_text else 'N/A (Deletion)'}\n"
-                    f"Justification: {justification if justification else 'AI Compliance Recommendation'}\n"
-                    f"Regulation Reference: {regulation_reference if regulation_reference else 'FDA Regulation'}"
+                proposed_block = add_text if add_text else "N/A (Deletion)"
+
+                if tag == "delete":
+                    title = "AI Remediation - Deletion Suggestion"
+                    stroke = (0.9, 0.2, 0.2)
+                elif tag == "insert":
+                    title = "AI Remediation - Insertion Suggestion"
+                    stroke = (0.2, 0.8, 0.2)
+                else:
+                    title = "AI Remediation - Replacement Suggestion"
+                    stroke = (1.0, 0.9, 0.0)
+
+                fp = _action_fingerprint(
+                    title, section_num, orig_text_block, proposed_block, just, reg_ref
                 )
-                
-                if tag == 'insert':
-                    # Pure insertion: find the preceding line as anchor
+                if fp not in actions:
+                    actions[fp] = {
+                        "title": title,
+                        "section": section_num,
+                        "orig_text": orig_text_block,
+                        "proposed_text": proposed_block,
+                        "justification": just,
+                        "regulation_reference": reg_ref,
+                        "stroke": stroke,
+                        "pages": {},
+                    }
+
+                page_rects = actions[fp]["pages"]
+
+                if tag == "insert":
                     anchor_idx = i1 - 1
                     anchor_line = None
                     while anchor_idx >= 0:
@@ -165,46 +240,43 @@ def apply_remediation(
                             anchor_line = original_lines[anchor_idx].strip()
                             break
                         anchor_idx -= 1
-                        
+
                     if anchor_line:
-                        for page in doc:
-                            rects = page.search_for(anchor_line)
+                        for page_idx, page in enumerate(doc):
+                            rects = _search_line_rects(page, anchor_line)
                             if rects:
-                                rect = rects[0]
-                                annot = page.add_highlight_annot(rect)
-                                annot.set_colors(stroke=(0.2, 0.8, 0.2))  # green highlight for insertion anchor
-                                annot.set_info(title="AI Remediation - Insertion Suggestion", content=annot_content)
-                                annot.update()
+                                # One anchor rect is enough for insertion markers
+                                page_rects.setdefault(page_idx, []).append(rects[0])
                                 break
                     continue
-                
-                # Try to locate rem_lines on any page
-                for page in doc:
+
+                for page_idx, page in enumerate(doc):
                     rects = []
                     for line in rem_lines:
-                        # Approximate matching helper
-                        line_rects = page.search_for(line)
-                        if not line_rects and len(line) > 30:
-                            line_rects = page.search_for(line[:30])
-                        if not line_rects and len(line) > 15:
-                            line_rects = page.search_for(line[5:25])
+                        # Exact match only; take first hit per line to avoid boilerplate fan-out
+                        line_rects = _search_line_rects(page, line)
                         if line_rects:
-                            rects.extend(line_rects)
-                            
+                            rects.append(line_rects[0])
                     if rects:
-                        # Highlight the affected text blocks
-                        for r in rects:
-                            annot = page.add_highlight_annot(r)
-                            if tag == 'delete':
-                                annot.set_colors(stroke=(0.9, 0.2, 0.2))  # red highlight for deletion
-                                title = "AI Remediation - Deletion Suggestion"
-                            else:
-                                annot.set_colors(stroke=(1.0, 0.9, 0.0))  # yellow highlight for replacement
-                                title = "AI Remediation - Replacement Suggestion"
-                            annot.set_info(title=title, content=annot_content)
-                            annot.update()
-                        break
-                        
+                        page_rects.setdefault(page_idx, []).extend(rects)
+
+            for action in actions.values():
+                annot_content = (
+                    f"Section: {action['section']}\n"
+                    f"Original Text: {action['orig_text']}\n"
+                    f"Proposed Text: {action['proposed_text']}\n"
+                    f"Justification: {action['justification']}\n"
+                    f"Regulation Reference: {action['regulation_reference']}"
+                )
+                for page_idx, rects in action["pages"].items():
+                    _add_highlight(
+                        doc[page_idx],
+                        rects,
+                        action["title"],
+                        annot_content,
+                        action["stroke"],
+                    )
+
             doc.save(new_file_path, incremental=False, encryption=fitz.PDF_ENCRYPT_KEEP)
             doc.close()
         except Exception as e:

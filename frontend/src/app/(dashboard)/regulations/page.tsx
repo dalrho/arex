@@ -158,6 +158,18 @@ function normalizedStatus(status?: string | null): string {
   return (status ?? "").toLowerCase().replace(/[\s-]+/g, "_");
 }
 
+function affectedDocumentsCount(impact: ImpactResponse | null | undefined): number {
+  if (!impact) return 0;
+  if (typeof impact.affected_documents_count === "number") {
+    return impact.affected_documents_count;
+  }
+  return impact.affected_documents?.length ?? 0;
+}
+
+function hasNoAffectedDocuments(impact: ImpactResponse | null | undefined): boolean {
+  return !!impact && affectedDocumentsCount(impact) === 0;
+}
+
 function hasCompletedAssessment(
   regulation: RegulationResponse | null,
   activeImpact: ImpactResponse | null
@@ -180,7 +192,13 @@ function displayStatusLabel(regulation: RegulationResponse, activeImpact: Impact
   return regulation.status?.replace(/_/g, " ") || "Pending Analysis";
 }
 
-function markRegulationAssessed(regulation: RegulationResponse): RegulationResponse {
+function markRegulationAssessed(
+  regulation: RegulationResponse,
+  impact?: ImpactResponse | null
+): RegulationResponse {
+  if (hasNoAffectedDocuments(impact)) {
+    return { ...regulation, status: "Closed" };
+  }
   if (normalizedStatus(regulation.status) === "closed") return regulation;
   return { ...regulation, status: "ANALYSIS_COMPLETE" };
 }
@@ -408,9 +426,9 @@ function RegulationsPage() {
       setImpact(res);
       setSelectedCaseImpact(res);
       setRegulations((prev) =>
-        prev.map((item) => (item.id === regulation.id ? markRegulationAssessed(item) : item))
+        prev.map((item) => (item.id === regulation.id ? markRegulationAssessed(item, res) : item))
       );
-      if (res.affected_documents) {
+      if (res.affected_documents && res.affected_documents.length > 0) {
         setSelectedDocIds(res.affected_documents.map((d: any) => d.document_id));
       } else {
         setSelectedDocIds([]);
@@ -433,6 +451,7 @@ function RegulationsPage() {
           : null;
 
     if (!hasCompletedAssessment(regulation, availableImpact)) return;
+    if (hasNoAffectedDocuments(availableImpact)) return;
 
     setSelectedId(regulation.id);
     setOpenedId(regulation.id);
@@ -543,17 +562,24 @@ function RegulationsPage() {
       : selectedCaseImpact?.regulation_id === selectedRailRegulation?.id
         ? selectedCaseImpact
         : null;
-  const canGenerateSelectedDrafts = hasCompletedAssessment(selectedRailRegulation, selectedRailImpact);
+  const canGenerateSelectedDrafts =
+    hasCompletedAssessment(selectedRailRegulation, selectedRailImpact) &&
+    !hasNoAffectedDocuments(selectedRailImpact);
   const selectedIsClosed = normalizedStatus(selected?.status) === "closed";
+  const selectedHasNoAffectedDocs = hasNoAffectedDocuments(impact);
   const selectedStatusComplete = selected ? hasCompletedAssessment(selected, impact) : false;
   const selectedStatusLabel = selected
     ? selectedIsClosed
-      ? "Closed Case"
+      ? selectedHasNoAffectedDocs
+        ? "Closed — No Action Required"
+        : "Closed Case"
       : displayStatusLabel(selected, impact)
     : "Not Analyzed";
   const selectedStatusTone = selectedIsClosed || selectedStatusComplete ? "emerald" : "amber";
   const selectedStatusDescription = selectedIsClosed
-    ? "Case has been closed after implementation review."
+    ? selectedHasNoAffectedDocs
+      ? "No company documents are affected; this case was closed automatically."
+      : "Case has been closed after implementation review."
     : selectedStatusComplete
       ? "Impact assessment is complete and ready for the next workflow step."
       : "Run the assessment to determine affected controls.";
@@ -671,11 +697,31 @@ function RegulationsPage() {
                     <div className="flex items-center gap-2">
                       <span className={clsx(
                         "h-5 w-5 rounded-full flex items-center justify-center font-bold text-[10px] border",
-                        (impact?.affected_documents && impact.affected_documents.length > 0) ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" : "bg-slate-800 text-slate-500 border-slate-700"
+                        impact
+                          ? selectedHasNoAffectedDocs
+                            ? "bg-slate-700/40 text-slate-300 border-slate-600/50"
+                            : affectedDocumentsCount(impact) > 0
+                              ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+                              : "bg-slate-800 text-slate-500 border-slate-700"
+                          : "bg-slate-800 text-slate-500 border-slate-700"
                       )}>
-                        {(impact?.affected_documents && impact.affected_documents.length > 0) ? "✓" : "⚪"}
+                        {impact
+                          ? selectedHasNoAffectedDocs
+                            ? "–"
+                            : affectedDocumentsCount(impact) > 0
+                              ? "✓"
+                              : "⚪"
+                          : "⚪"}
                       </span>
-                      <span className={clsx((impact?.affected_documents && impact.affected_documents.length > 0) ? "text-slate-200 font-bold" : "text-slate-500")}>Documents Identified</span>
+                      <span className={clsx(
+                        impact && (selectedHasNoAffectedDocs || affectedDocumentsCount(impact) > 0)
+                          ? selectedHasNoAffectedDocs
+                            ? "text-slate-400 font-medium"
+                            : "text-slate-200 font-bold"
+                          : "text-slate-500"
+                      )}>
+                        {selectedHasNoAffectedDocs ? "None Affected" : "Documents Identified"}
+                      </span>
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -776,7 +822,9 @@ function RegulationsPage() {
                       </p>
                     </div>
                     <div className="mt-4 flex flex-wrap gap-2 pt-2 border-t border-slate-800/80">
-                      {remediationDrafts.length > 0 ? (
+                      {selectedHasNoAffectedDocs ? (
+                        <span className="text-[11px] text-slate-500 italic py-1">No action required</span>
+                      ) : remediationDrafts.length > 0 ? (
                         <>
                           <button
                             type="button"
@@ -799,7 +847,7 @@ function RegulationsPage() {
                         <button
                           type="button"
                           onClick={() => void handleGenerateDrafts()}
-                          disabled={generating || !impact || selected.status === "Closed"}
+                          disabled={generating || !impact || selected.status === "Closed" || selectedHasNoAffectedDocs}
                           className="w-full py-2 rounded bg-blue-600 text-white text-xs font-bold hover:bg-blue-500 transition duration-200 disabled:opacity-50 flex items-center justify-center gap-2"
                         >
                           {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
@@ -826,7 +874,9 @@ function RegulationsPage() {
                       </p>
                     </div>
                     <div className="mt-4 flex flex-wrap gap-2 pt-2 border-t border-slate-800/80">
-                      { (remediationDrafts.length > 0 && (remediationDrafts.some(d => d.status === "APPROVED") || selected.status === "Draft Approved" || selected.status === "Implementation Planning" || selected.status === "Implementation Complete" || selected.status === "Closed" || tasks.length > 0)) ? (
+                      {selectedHasNoAffectedDocs ? (
+                        <span className="text-[11px] text-slate-500 italic py-1">No action required</span>
+                      ) : (remediationDrafts.length > 0 && (remediationDrafts.some(d => d.status === "APPROVED") || selected.status === "Draft Approved" || selected.status === "Implementation Planning" || selected.status === "Implementation Complete" || selected.status === "Closed" || tasks.length > 0)) ? (
                         tasks.length > 0 ? (
                           <>
                             <button
@@ -1317,7 +1367,15 @@ function AffectedDocumentsList({
   selectedDocIds: string[];
   onToggleDoc: (docId: string) => void;
 }) {
-  if (!affectedDocs || affectedDocs.length === 0) return null;
+  if (!affectedDocs || affectedDocs.length === 0) {
+    return (
+      <section className="rounded-lg border border-slate-700 bg-[#081024] p-6 shadow-lg">
+        <p className="text-sm text-slate-300 leading-relaxed">
+          No company documents are affected by this regulation.
+        </p>
+      </section>
+    );
+  }
   
   return (
     <section className="rounded-lg border border-slate-700 bg-[#081024] p-6 shadow-lg">

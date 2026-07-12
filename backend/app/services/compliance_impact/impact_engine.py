@@ -132,7 +132,8 @@ def assess_compliance_impact(
         "Identify any conflicts, gaps, or security requirements. You must output the overall impact level "
         "(Low, Medium, High), a calculated risk score (0.0 to 1.0), a detailed compliance rationale, "
         "the affected departments, and specific explanations for each affected SOP detailing why it "
-        "requires modification."
+        "requires modification. If no company SOPs require modification, return an empty explanations "
+        "object and clearly state in the rationale that no company documents are affected."
     )
 
     regulation_content = regulation.summary if regulation.summary and regulation.summary.strip() else regulation.raw_content
@@ -193,9 +194,10 @@ def assess_compliance_impact(
                 unique_docs[d.id] = {"max_score": 0.0, "text_snippet": ""}
         docs = all_org_docs
 
-    # Match the LLM explanations back to actual db documents
+    # Match the LLM explanations back to actual db documents.
+    # Only include documents the LLM explicitly flagged — never force-include
+    # vector matches that lack an explanation (avoids misleading "affected" lists).
     for doc in docs:
-        # Check if the document was marked as affected by the LLM (case-insensitive name check)
         explanation = None
         for filename_key, exp_text in llm_response.explanations.items():
             import os
@@ -204,19 +206,8 @@ def assess_compliance_impact(
             if doc_base in key_base or key_base in doc_base:
                 explanation = exp_text
                 break
-        
-        # If the LLM didn't return an explanation but the chunk was a strong vector match,
-        # we still flag it as affected with a default explanation.
-        # In offline mode, we rely strictly on the LLM explanations dict to determine
-        # which files actually need revision — skip any doc not explicitly listed.
-        if explanation is None and matched_doc_ids and not is_offline:
-            explanation = (
-                f"SOP section conflicts with new guidelines on {regulation.title}. "
-                f"Requires review of authentication/access mechanisms."
-            )
 
-        # In offline mode, only include documents the mock LLM explicitly flagged as needing revision
-        if explanation is None and is_offline:
+        if explanation is None:
             continue
 
         fname_lower = doc.filename.lower()
