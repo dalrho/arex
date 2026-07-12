@@ -76,7 +76,7 @@ def test_ingest_returns_response_when_pipeline_fails(db_session):
     )
 
     with patch(
-        "app.api.v1.endpoints.regulations.trigger_agent_pipeline",
+        "app.ai.agents.regulatory_intelligence_agent.run_regulatory_intelligence",
         side_effect=RuntimeError("429 RESOURCE_EXHAUSTED"),
     ), patch("app.api.v1.endpoints.regulations.add_audit_event") as mock_audit:
 

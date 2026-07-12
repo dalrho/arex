@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Type, TypeVar
 from pydantic import BaseModel, ValidationError
 
 from app.core.config import settings
+from app.core.profiler import RequestProfiler
 
 logger = logging.getLogger("arex.llm-client")
 
@@ -101,7 +102,9 @@ class LLMClient:
             return self._generate_mock_response(messages, response_model)
 
         # Inject RAG context into the system prompt
+        t_prompt_start = time.time()
         enriched_messages = self._inject_rag_context(messages, context_docs)
+        RequestProfiler.log_metric("prompt_construction_time", time.time() - t_prompt_start)
 
         if mode == "hackathon":
             return self._call_fireworks(
@@ -198,13 +201,16 @@ class LLMClient:
         # Standard OpenAI/Fireworks chat completion parameters
         extra_args = {}
         if response_model:
-            # Tell fireworks we want JSON format
-            extra_args["response_format"] = {"type": "json_object"}
+            # Tell fireworks we want structured JSON schema format
+            extra_args["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": response_model.__name__,
+                    "schema": response_model.model_json_schema()
+                }
+            }
             
-            schema_hint = json.dumps(
-                {k: str(v.annotation) for k, v in response_model.model_fields.items()},
-                indent=2,
-            )
+            schema_hint = json.dumps(response_model.model_json_schema(), indent=2)
             json_instruction = (
                 f"\n\nYou MUST respond with a SINGLE valid JSON object matching this schema "
                 f"(no markdown code fences, no extra text outside the JSON):\n{schema_hint}"
@@ -238,6 +244,7 @@ class LLMClient:
                     f"--------------------------"
                 )
 
+                t_inf = time.time()
                 response = client.chat.completions.create(
                     model=model_name,
                     messages=current_messages,
@@ -245,6 +252,7 @@ class LLMClient:
                     max_tokens=max_tokens,
                     **extra_args
                 )
+                RequestProfiler.log_metric("llm_inference_time", time.time() - t_inf)
 
                 latency = time.time() - start_time
                 raw_text = response.choices[0].message.content
@@ -261,6 +269,9 @@ class LLMClient:
                 completion_tokens = getattr(usage, "completion_tokens", 0) if usage else 0
                 total_tokens = getattr(usage, "total_tokens", prompt_tokens + completion_tokens) if usage else 0
 
+                RequestProfiler.log_metric("prompt_tokens", prompt_tokens)
+                RequestProfiler.log_metric("completion_tokens", completion_tokens)
+
                 logger.info(
                     f"[LLMClient] Fireworks call succeeded | "
                     f"Latency: {latency:.2f}s | "
@@ -268,6 +279,7 @@ class LLMClient:
                 )
 
                 if response_model:
+                    t_parse = time.time()
                     try:
                         # Strip markdown code fences if model added them
                         cleaned = raw_text.strip()
@@ -281,6 +293,7 @@ class LLMClient:
 
                         parsed_json = json.loads(cleaned)
                         validated = response_model.model_validate(parsed_json)
+                        RequestProfiler.log_metric("json_validation_time", time.time() - t_parse)
                         logger.info(
                             f"[LLMClient] Structured output validated as {response_model.__name__}."
                         )
@@ -349,11 +362,7 @@ class LLMClient:
 
         # Append JSON schema instruction if structured output is needed
         if response_model:
-            schema_hint = json.dumps(
-                {k: str(v.annotation) for k, v in response_model.model_fields.items()},
-                indent=2,
-                default=str
-            )
+            schema_hint = json.dumps(response_model.model_json_schema(), indent=2)
             json_instruction = (
                 f"\n\nYou MUST respond with a SINGLE valid JSON object matching this schema "
                 f"(no markdown code fences, no extra text outside the JSON):\n{schema_hint}"
@@ -364,6 +373,8 @@ class LLMClient:
             temperature=temperature,
             max_output_tokens=max_tokens,
             system_instruction=system_instruction,
+            response_mime_type="application/json" if response_model else None,
+            response_schema=response_model if response_model else None,
         )
 
         current_user_prompt = user_prompt
@@ -388,11 +399,13 @@ class LLMClient:
                     f"--------------------------"
                 )
 
+                t_inf = time.time()
                 response = client.models.generate_content(
                     model=self.settings.GEMINI_MODEL,
                     contents=call_contents,
                     config=generation_config,
                 )
+                RequestProfiler.log_metric("llm_inference_time", time.time() - t_inf)
 
                 latency = time.time() - start_time
                 raw_text = response.text
@@ -409,6 +422,9 @@ class LLMClient:
                 completion_tokens = getattr(usage, "candidates_token_count", 0) if usage else 0
                 total_tokens = getattr(usage, "total_token_count", prompt_tokens + completion_tokens) if usage else 0
 
+                RequestProfiler.log_metric("prompt_tokens", prompt_tokens)
+                RequestProfiler.log_metric("completion_tokens", completion_tokens)
+
                 logger.info(
                     f"[LLMClient] Gemini call succeeded | "
                     f"Latency: {latency:.2f}s | "
@@ -416,6 +432,7 @@ class LLMClient:
                 )
 
                 if response_model:
+                    t_parse = time.time()
                     try:
                         # Strip markdown code fences if model added them
                         cleaned = raw_text.strip()
@@ -429,6 +446,7 @@ class LLMClient:
 
                         parsed_json = json.loads(cleaned)
                         validated = response_model.model_validate(parsed_json)
+                        RequestProfiler.log_metric("json_validation_time", time.time() - t_parse)
                         logger.info(
                             f"[LLMClient] Structured output validated as {response_model.__name__}."
                         )

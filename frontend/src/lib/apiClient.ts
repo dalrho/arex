@@ -183,6 +183,13 @@ export function getRegulation(id: string): Promise<RegulationResponse> {
   return getJson(`/regulations/${id}`);
 }
 
+export function deleteRegulation(id: string): Promise<void> {
+  return request<void>(`/regulations/${id}`, {
+    method: "DELETE",
+    headers: buildHeaders(),
+  });
+}
+
 export function getImpactForRegulation(regulationId: string): Promise<ImpactResponse> {
   return getJson(`/impact/regulation/${regulationId}`);
 }

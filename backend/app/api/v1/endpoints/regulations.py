@@ -16,7 +16,6 @@ from app.models.regulation_update import (
     REGULATION_SOURCE_DOCUMENT_UPLOAD,
 )
 from app.api.v1.schemas.regulation import RegulationResponse
-from app.ai.graph_builder import trigger_agent_pipeline
 from app.core.audit import add_audit_event
 
 logger = logging.getLogger("arex.api.regulations")
@@ -204,28 +203,30 @@ def ingest_regulation(
     )
 
     try:
-        final_state = trigger_agent_pipeline(
-            regulation_id=str(reg.id),
-            organization_id=tenant_id,
-            raw_content=reg.raw_content,
-        )
+        from app.ai.agents.regulatory_intelligence_agent import run_regulatory_intelligence
+        ri_state = {
+            "regulation_id": str(reg.id),
+            "organization_id": tenant_id,
+            "raw_content": reg.raw_content,
+        }
+        ri_result = run_regulatory_intelligence(ri_state)
         reg.status = "Not Analyzed"
         reg.parsed_sections = {
             "sections": parsed,
             "classification": {
-                "relevant": final_state.get("relevant", False),
-                "category": final_state.get("category", "other"),
-                "urgency": final_state.get("urgency", "low"),
-                "affected_business_areas": final_state.get("affected_business_areas", []),
-                "rationale": final_state.get("rationale", ""),
+                "relevant": ri_result.get("relevant", False),
+                "category": ri_result.get("category", "other"),
+                "urgency": ri_result.get("urgency", "low"),
+                "affected_business_areas": ri_result.get("affected_business_areas", []),
+                "rationale": ri_result.get("rationale", ""),
             },
         }
         db.add(reg)
         db.commit()
         db.refresh(reg)
-        logger.info(f"LangGraph pipeline completed for regulation {reg.id}")
+        logger.info(f"Regulatory intelligence classification completed for regulation {reg.id}")
     except Exception as e:
-        logger.error(f"LangGraph pipeline failed for regulation {reg.id}: {e}")
+        logger.error(f"Regulatory intelligence classification failed for regulation {reg.id}: {e}")
         # Ingestion succeeds even if AI pipeline fails
         db.refresh(reg)
 

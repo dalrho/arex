@@ -1,4 +1,5 @@
 import uuid
+import time
 import logging
 from sqlalchemy.orm import Session
 
@@ -24,7 +25,10 @@ def assess_compliance_impact(
     4. Compute deterministic risk score and ranking.
     5. Save/update ImpactAssessment record in DB.
     """
-    logger.info(f"Assessing compliance impact for regulation {regulation_id}...")
+    from app.core.profiler import RequestProfiler
+    RequestProfiler.reset()
+    logger.info(f"[Timing] assess_compliance_impact START for regulation {regulation_id}")
+    t_total = time.time()
     
     # 1. Fetch regulation content
     regulation = db.query(RegulationUpdate).filter(RegulationUpdate.id == regulation_id).first()
@@ -50,13 +54,17 @@ def assess_compliance_impact(
 
     # 2. Get embeddings and query Qdrant
     query_text = regulation.summary if regulation.summary and regulation.summary.strip() else regulation.raw_content
+    t_embed = time.time()
     query_vector = embedding_service.get_embedding(query_text)
+    logger.info(f"[Timing] Embedding generated in {time.time() - t_embed:.2f}s")
     # Search for matching document chunks
+    t_qdrant = time.time()
     matched_chunks = vector_db_client.search_chunks(
         query_vector=query_vector,
         organization_id=organization_id,
         limit=20
     )
+    logger.info(f"[Timing] Qdrant search completed in {time.time() - t_qdrant:.2f}s — {len(matched_chunks)} chunks")
 
     # Log retrieved chunks info
     from app.models.document import Document
@@ -148,12 +156,14 @@ def assess_compliance_impact(
 
     from app.core.exceptions import LLMConfigurationError
     try:
-        logger.info(f"Invoking LLM for compliance impact assessment on '{regulation.title}'...")
+        logger.info(f"[Timing] LLM impact assessment call START for '{regulation.title}'")
+        t_llm = time.time()
         llm_response = llm_client.get_completion(
             messages=messages,
             response_model=ImpactAssessmentLLMOutput,
             temperature=0.0
         )
+        logger.info(f"[Timing] LLM impact assessment call completed in {time.time() - t_llm:.2f}s")
     except LLMConfigurationError:
         raise
     except Exception as llm_err:
@@ -244,12 +254,18 @@ def assess_compliance_impact(
         status="pending"
     )
 
+    t_db = time.time()
     db.add(assessment)
     db.commit()
     db.refresh(assessment)
+    RequestProfiler.log_metric("database_write_time", time.time() - t_db)
 
     # Store matched document list on the transient property for graph state
     assessment.matched_document_ids = [uuid.UUID(d["document_id"]) for d in affected_docs_list]
+
+    logger.info(f"[Timing] assess_compliance_impact TOTAL: {time.time() - t_total:.2f}s for regulation {regulation_id}")
+    RequestProfiler.log_metric("total_time", time.time() - t_total)
+    RequestProfiler.print_summary("Compliance Impact Assessment")
 
     return assessment
 

@@ -21,11 +21,122 @@ class ImplementationAgentOutput(BaseModel):
     requires_tasks: bool
     tasks: List[TaskItem]
 
+def _process_single_draft(
+    draft_id_str: str,
+    regulation_id_str: str,
+    system_prompt: str
+):
+    """
+    Worker function to process task generation for a single draft.
+    Runs inside a thread pool with its own database session.
+    """
+    import time
+    import uuid
+    from app.core.dependencies import SessionLocal
+    from app.core.profiler import RequestProfiler
+    from app.models.remediation_draft import RemediationDraft
+    from app.models.implementation_task import ImplementationTask
+
+    # Initialize thread-local metrics
+    RequestProfiler.reset()
+    
+    db_thread = SessionLocal()
+    try:
+        draft_id = uuid.UUID(draft_id_str)
+        draft = db_thread.query(RemediationDraft).filter(RemediationDraft.id == draft_id).first()
+        if not draft:
+            logger.warning(f"Remediation draft {draft_id} not found in DB.")
+            return [], RequestProfiler.get_metrics()
+
+        logger.info(f"Breaking down draft changes into tasks for draft: {draft_id}...")
+
+        user_prompt = (
+            f"REMEDIATION DRAFT SUGGESTED TEXT:\n{draft.proposed_text}\n\n"
+            f"ORIGINAL SOP TEXT:\n{draft.original_text}\n\n"
+            "Please analyze the additions/deletions and outline the operational tasks required to execute this update."
+        )
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ]
+
+        logger.info(
+            f"[ImplementationAgent Thread] Calling LLM for draft {draft_id} | "
+            f"mode={'online' if not llm_client.is_offline_mode() else 'offline'}"
+        )
+        
+        result: ImplementationAgentOutput = llm_client.get_completion(
+            messages=messages,
+            response_model=ImplementationAgentOutput,
+            temperature=0.0,
+        )
+
+        draft.requires_tasks = result.requires_tasks
+        
+        t_db = time.time()
+        db_thread.add(draft)
+        db_thread.commit()
+        RequestProfiler.log_metric("database_write_time", time.time() - t_db)
+
+        thread_task_ids = []
+        if result.requires_tasks:
+            tasks_list = []
+            for item in result.tasks:
+                dept_normalized = item.department.strip()
+                if dept_normalized.upper() in ["IT", "INFORMATION TECHNOLOGY"]:
+                    dept = "IT"
+                elif dept_normalized.upper() in ["ENGINEERING", "ENG"]:
+                    dept = "Engineering"
+                elif dept_normalized.upper() in ["QA", "QUALITY ASSURANCE"]:
+                    dept = "QA"
+                else:
+                    dept = "Training"
+
+                priority = item.priority.strip().capitalize()
+                if priority not in ["Low", "Medium", "High"]:
+                    priority = "Medium"
+
+                task = ImplementationTask(
+                    id=uuid.uuid4(),
+                    regulation_id=uuid.UUID(regulation_id_str),
+                    remediation_draft_id=draft.id,
+                    title=item.title,
+                    description=item.description,
+                    department=dept,
+                    priority=priority,
+                    status="PENDING_APPROVAL"
+                )
+                tasks_list.append(task)
+            
+            t_db = time.time()
+            for t in tasks_list:
+                db_thread.add(t)
+            db_thread.commit()
+            RequestProfiler.log_metric("database_write_time", time.time() - t_db)
+            
+            for t in tasks_list:
+                thread_task_ids.append(str(t.id))
+
+        return thread_task_ids, RequestProfiler.get_metrics()
+    except Exception as err:
+        db_thread.rollback()
+        logger.error(f"Failed processing draft {draft_id_str} in thread: {err}")
+        return [], RequestProfiler.get_metrics()
+    finally:
+        db_thread.close()
+
+
 def run_implementation_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     """
     LangGraph agent node that breaks down approved/suggested remediation changes
     into concrete, department-specific tasks with audit links.
     """
+    from app.core.profiler import RequestProfiler
+    import time
+    RequestProfiler.reset()
+    t_start = time.time()
+
     logger.info("Executing Implementation Agent...")
     
     regulation_id_str = state.get("regulation_id")
@@ -56,81 +167,40 @@ def run_implementation_agent(state: Dict[str, Any]) -> Dict[str, Any]:
                 "and list tasks for IT, Engineering, QA, or Training. Otherwise, output requires_tasks as false."
             )
 
-        for draft_id_str in draft_ids:
-            draft_id = uuid.UUID(draft_id_str)
-            draft = db.query(RemediationDraft).filter(RemediationDraft.id == draft_id).first()
-            if not draft:
-                logger.warning(f"Remediation draft {draft_id} not found in DB.")
-                continue
-                
-            logger.info(f"Breaking down draft changes into tasks for draft: {draft_id}...")
+        # Process drafts in parallel
+        import concurrent.futures
+        
+        max_workers = min(len(draft_ids), 4)
+        logger.info(f"Processing {len(draft_ids)} drafts in parallel using {max_workers} threads...")
+        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(
+                    _process_single_draft,
+                    draft_id_str,
+                    regulation_id_str,
+                    system_prompt
+                ): draft_id_str
+                for draft_id_str in draft_ids
+            }
             
-            user_prompt = (
-                f"REMEDIATION DRAFT SUGGESTED TEXT:\n{draft.proposed_text}\n\n"
-                f"ORIGINAL SOP TEXT:\n{draft.original_text}\n\n"
-                "Please analyze the additions/deletions and outline the operational tasks required to execute this update."
-            )
-            
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ]
-            
-            logger.info(
-                f"[ImplementationAgent] Calling LLM for draft {draft_id} | "
-                f"mode={'online' if not llm_client.is_offline_mode() else 'offline'}"
-            )
-            # Call LLM client
-            result: ImplementationAgentOutput = llm_client.get_completion(
-                messages=messages,
-                response_model=ImplementationAgentOutput,
-                temperature=0.0,
-            )
-            
-            # Save requires_tasks state on the draft
-            draft.requires_tasks = result.requires_tasks
-            db.add(draft)
-            db.commit()
+            for future in concurrent.futures.as_completed(futures):
+                d_id_str = futures[future]
+                try:
+                    thread_task_ids, thread_metrics = future.result()
+                    task_ids.extend(thread_task_ids)
+                    # Aggregate thread-local metrics into the main profiler
+                    for metric, val in thread_metrics.items():
+                        if metric != "total_time":
+                            RequestProfiler.log_metric(metric, val)
+                except Exception as exc:
+                    logger.error(f"Draft thread processing for {d_id_str} raised exception: {exc}")
 
-            # Store generated tasks if operational work is needed
-            if result.requires_tasks:
-                for item in result.tasks:
-                    # Validate department enum matching models
-                    dept_normalized = item.department.strip()
-                    if dept_normalized.upper() in ["IT", "INFORMATION TECHNOLOGY"]:
-                        dept = "IT"
-                    elif dept_normalized.upper() in ["ENGINEERING", "ENG"]:
-                        dept = "Engineering"
-                    elif dept_normalized.upper() in ["QA", "QUALITY ASSURANCE"]:
-                        dept = "QA"
-                    else:
-                        dept = "Training"
-                        
-                    # Normalize priority
-                    priority = item.priority.strip().capitalize()
-                    if priority not in ["Low", "Medium", "High"]:
-                        priority = "Medium"
-                        
-                    # Save task
-                    task = ImplementationTask(
-                        id=uuid.uuid4(),
-                        regulation_id=uuid.UUID(regulation_id_str),
-                        remediation_draft_id=draft.id,
-                        title=item.title,
-                        description=item.description,
-                        department=dept,
-                        priority=priority,
-                        status="PENDING_APPROVAL"
-                    )
-                    db.add(task)
-                    db.commit()
-                    db.refresh(task)
-                    task_ids.append(str(task.id))
-                    
         logger.info(f"Implementation Agent successfully created {len(task_ids)} tasks.")
+        RequestProfiler.log_metric("total_time", time.time() - t_start)
+        RequestProfiler.print_summary("Implementation Agent")
         return {"task_ids": task_ids}
 
-        
     except Exception as e:
         logger.error(f"Implementation Agent failed: {e}")
         db.rollback()

@@ -55,7 +55,13 @@ def test_llm_client_fireworks_online_completion(mock_settings):
         call_kwargs = mock_instance.chat.completions.create.call_args[1]
         assert call_kwargs["model"] == "accounts/fireworks/models/qwen3-32b"
         assert call_kwargs["temperature"] == 0.0
-        assert call_kwargs["response_format"] == {"type": "json_object"}
+        assert call_kwargs["response_format"] == {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "MockResponseModel",
+                "schema": MockResponseModel.model_json_schema()
+            }
+        }
 
         # Assert correct validated return type and values
         assert isinstance(result, MockResponseModel)

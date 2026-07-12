@@ -41,40 +41,46 @@ class EmbeddingService:
         Online Mode  → Google text-embedding-004 (Gemini) or Nomic Embed (Fireworks)
         Offline Mode → Deterministic mock embeddings (keyword-biased)
         """
-        if self.is_offline_mode():
-            logger.warning(
-                "[EmbeddingService] Offline mode: returning deterministic mock embeddings."
-            )
-            return [self._generate_mock_embedding(text) for text in texts]
-
-        mode = self.settings.AI_MODE.strip().lower()
-        if mode == "hackathon":
-            model = self.settings.FIREWORKS_EMBEDDING_MODEL
-            provider = "Fireworks"
-        else:
-            model = self.settings.GEMINI_EMBEDDING_MODEL
-            provider = "Gemini"
-
-        logger.info(
-            f"[EmbeddingService] Online mode: fetching real embeddings for "
-            f"{len(texts)} text(s) via {provider} using {model}."
-        )
+        import time
+        from app.core.profiler import RequestProfiler
+        t_start = time.time()
         try:
-            if mode == "hackathon":
-                return self._call_fireworks_embeddings(texts)
-            else:
-                return self._call_gemini_embeddings(texts)
-        except Exception as e:
-            if not self.is_offline_mode():
-                logger.error(
-                    f"[EmbeddingService] {provider} embedding call failed: {e}."
+            if self.is_offline_mode():
+                logger.warning(
+                    "[EmbeddingService] Offline mode: returning deterministic mock embeddings."
                 )
-                raise e
-            logger.error(
-                f"[EmbeddingService] {provider} embedding call failed: {e}. "
-                "Falling back to mock embeddings."
+                return [self._generate_mock_embedding(text) for text in texts]
+
+            mode = self.settings.AI_MODE.strip().lower()
+            if mode == "hackathon":
+                model = self.settings.FIREWORKS_EMBEDDING_MODEL
+                provider = "Fireworks"
+            else:
+                model = self.settings.GEMINI_EMBEDDING_MODEL
+                provider = "Gemini"
+
+            logger.info(
+                f"[EmbeddingService] Online mode: fetching real embeddings for "
+                f"{len(texts)} text(s) via {provider} using {model}."
             )
-            return [self._generate_mock_embedding(text) for text in texts]
+            try:
+                if mode == "hackathon":
+                    return self._call_fireworks_embeddings(texts)
+                else:
+                    return self._call_gemini_embeddings(texts)
+            except Exception as e:
+                if not self.is_offline_mode():
+                    logger.error(
+                        f"[EmbeddingService] {provider} embedding call failed: {e}."
+                    )
+                    raise e
+                logger.error(
+                    f"[EmbeddingService] {provider} embedding call failed: {e}. "
+                    "Falling back to mock embeddings."
+                )
+                return [self._generate_mock_embedding(text) for text in texts]
+        finally:
+            RequestProfiler.log_metric("embedding_time", time.time() - t_start)
 
     def _call_fireworks_embeddings(self, texts: List[str]) -> List[List[float]]:
         """Calls Fireworks AI embeddings API via HTTP request."""
