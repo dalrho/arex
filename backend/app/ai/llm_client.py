@@ -6,6 +6,7 @@ from pydantic import BaseModel, ValidationError
 
 from app.core.config import settings
 from app.core.profiler import RequestProfiler
+from app.core.token_usage import token_usage_tracker
 
 logger = logging.getLogger("arex.llm-client")
 
@@ -271,6 +272,7 @@ class LLMClient:
 
                 RequestProfiler.log_metric("prompt_tokens", prompt_tokens)
                 RequestProfiler.log_metric("completion_tokens", completion_tokens)
+                token_usage_tracker.record(prompt_tokens, completion_tokens)
 
                 logger.info(
                     f"[LLMClient] Fireworks call succeeded | "
@@ -424,6 +426,7 @@ class LLMClient:
 
                 RequestProfiler.log_metric("prompt_tokens", prompt_tokens)
                 RequestProfiler.log_metric("completion_tokens", completion_tokens)
+                token_usage_tracker.record(prompt_tokens, completion_tokens)
 
                 logger.info(
                     f"[LLMClient] Gemini call succeeded | "
