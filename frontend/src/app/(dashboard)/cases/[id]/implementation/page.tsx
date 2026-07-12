@@ -6,7 +6,7 @@ import Link from "next/link";
 import { Loader2, ArrowLeft, RefreshCw, AlertCircle, CheckCircle2, ClipboardCheck, ArrowUpRight } from "lucide-react";
 import clsx from "clsx";
 import StatusBadge from "@/components/ui/StatusBadge";
-import { generateImplementationTasks, syncTasksToJira, updateTask, listTasks, getRegulation } from "@/lib/apiClient";
+import { generateImplementationTasks, syncTasksToJira, updateTask, listTasks, getRegulation, listRemediations } from "@/lib/apiClient";
 import type { TaskResponse } from "@/types/api";
 
 function CaseImplementationPage({ params }: { params: { id: string } }) {
@@ -22,12 +22,20 @@ function CaseImplementationPage({ params }: { params: { id: string } }) {
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [approvingAll, setApprovingAll] = useState(false);
+  const [firstDraftId, setFirstDraftId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!regulationId) {
       router.push("/regulations");
       return;
     }
+
+    // Load first draft ID for back navigation shortcut
+    listRemediations(regulationId)
+      .then((drafts) => {
+        if (drafts.length > 0) setFirstDraftId(drafts[0].id);
+      })
+      .catch((err) => console.error("Failed to load remediation drafts for link:", err));
 
     async function loadOrGenerateTasks() {
       try {
@@ -155,10 +163,26 @@ function CaseImplementationPage({ params }: { params: { id: string } }) {
       <main className="px-6 py-6 md:px-10">
         <div className="mx-auto max-w-7xl">
           
-          <Link href="/regulations" className="inline-flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-blue-300 mb-6">
-            <ArrowLeft className="h-4 w-4" />
-            Back to Case Regulations
-          </Link>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm font-semibold mb-6">
+            <Link
+              href={`/regulations?case_id=${regulationId}`}
+              className="inline-flex items-center gap-2 text-slate-500 hover:text-blue-300"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back to Compliance Case Regulations
+            </Link>
+            {firstDraftId && (
+              <>
+                <span className="text-slate-700">|</span>
+                <Link
+                  href={`/remediation/${firstDraftId}`}
+                  className="inline-flex items-center gap-2 text-slate-500 hover:text-blue-300"
+                >
+                  Back to Remediation Drafts
+                </Link>
+              </>
+            )}
+          </div>
 
           {syncMessage && (
             <div className={clsx(

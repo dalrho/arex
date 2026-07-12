@@ -96,7 +96,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     cache: "no-store",
   };
-  
+
   if (mergedInit.headers) {
     mergedInit.headers = {
       ...mergedInit.headers,

@@ -2,10 +2,11 @@
 
 import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CheckCircle2, Clock3, FileText, Link2, Loader2, Play, RefreshCw, ShieldCheck, Upload, X } from "lucide-react";
+import { CheckCircle2, Clock3, FileText, Link2, Loader2, Play, RefreshCw, ShieldCheck, Upload, X, Trash2 } from "lucide-react";
 import clsx from "clsx";
 import AssessmentLoadingView from "@/components/assessments/AssessmentLoadingView";
 import StatusBadge from "@/components/ui/StatusBadge";
+import Modal from "@/components/ui/Modal";
 import {
   generateRemediationDrafts,
   getCurrentUser,
@@ -18,6 +19,7 @@ import {
   listTasks,
   fetchRegulationsFromFDA,
   uploadRegulation,
+  deleteRegulation,
   type UploadRegulationPayload,
 } from "@/lib/apiClient";
 import { formatDate, getAccountDisplayName } from "@/lib/format";
@@ -224,6 +226,11 @@ function RegulationsPage() {
   const [fetchingFDA, setFetchingFDA] = useState(false);
   const [fetchMsg, setFetchMsg] = useState<string | null>(null);
 
+  const [deletingRegulationId, setDeletingRegulationId] = useState<string | null>(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
   useEffect(() => {
     setUser(getCurrentUser());
   }, []);
@@ -245,6 +252,44 @@ function RegulationsPage() {
   }, []);
 
   useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => {
+    const caseId = searchParams.get("case_id") || searchParams.get("regulation_id");
+    if (caseId && regulations.length > 0 && regulations.some(r => r.id === caseId)) {
+      setSelectedId(caseId);
+      setOpenedId(caseId);
+    }
+  }, [searchParams, regulations]);
+
+  function triggerDeleteRegulation(id: string) {
+    setDeletingRegulationId(id);
+    setDeleteError(null);
+    setDeleteConfirmOpen(true);
+  }
+
+  async function handleDeleteConfirm() {
+    if (!deletingRegulationId) return;
+    setIsDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteRegulation(deletingRegulationId);
+      setRegulations((prev) => prev.filter((r) => r.id !== deletingRegulationId));
+      if (openedId === deletingRegulationId) {
+        setOpenedId(null);
+      }
+      if (selectedId === deletingRegulationId) {
+        setSelectedId(null);
+      }
+      setFetchMsg("Regulation successfully deleted.");
+      setDeleteConfirmOpen(false);
+      setDeletingRegulationId(null);
+    } catch (err: any) {
+      setDeleteError(err.message || "Failed to delete regulation. It may have active remediation drafts or implementation tasks.");
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
 
   async function handleFetchFromFDA() {
     setFetchingFDA(true);
@@ -854,6 +899,7 @@ function RegulationsPage() {
         onSelect={handleRailSelect}
         onOpen={handleRailOpen}
         onRun={(regulation) => void handleRunAssessment(regulation)}
+        onDelete={triggerDeleteRegulation}
       />
 
       <CitationPanel
@@ -875,6 +921,46 @@ function RegulationsPage() {
             setFetchMsg(`Regulation "${reg.title}" uploaded successfully.`);
           }}
         />
+      )}
+
+      {deleteConfirmOpen && (
+        <Modal
+          open={deleteConfirmOpen}
+          onClose={() => setDeleteConfirmOpen(false)}
+          title="Delete Regulation Update"
+          description="Confirm removal of this regulatory case. This action will permanently delete all associated AI impact assessments."
+          footer={
+            <>
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmOpen(false)}
+                className="h-10 rounded-md border border-slate-700 px-4 text-sm font-semibold text-slate-200 hover:bg-slate-900"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleDeleteConfirm()}
+                disabled={isDeleting}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-rose-600 px-4 text-sm font-bold text-white hover:bg-rose-500 disabled:opacity-60"
+              >
+                {isDeleting && <Loader2 className="h-4 w-4 animate-spin" />}
+                Confirm Delete
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-4">
+            {deleteError && (
+              <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-xs font-semibold text-rose-250">
+                {deleteError}
+              </div>
+            )}
+            <p className="text-sm text-slate-350 leading-relaxed">
+              Are you sure you want to delete this regulation? If there are any active remediation drafts or implementation tasks, deletion will be blocked to preserve GxP audit trails.
+            </p>
+          </div>
+        </Modal>
       )}
     </div>
   );
@@ -998,6 +1084,7 @@ function RegulationRail({
   onSelect,
   onOpen,
   onRun,
+  onDelete,
 }: {
   regulations: RegulationResponse[];
   selectedId: string | null;
@@ -1011,6 +1098,7 @@ function RegulationRail({
   onSelect: (id: string) => void;
   onOpen: (id: string) => void;
   onRun: (regulation: RegulationResponse) => void;
+  onDelete: (id: string) => void;
 }) {
   return (
     <aside className="hidden w-shell-rail flex-shrink-0 overflow-y-auto border-l border-slate-700 bg-[#020613] px-4 py-6 xl:block">
@@ -1088,19 +1176,33 @@ function RegulationRail({
                 </button>
                 <div className="mt-3 flex items-center justify-between gap-3">
                   <StatusBadge label={badgeLabel} tone={badgeTone} />
-                  <button
-                    type="button"
-                    data-testid={`regulation-run-${regulation.id}`}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onRun(regulation);
-                    }}
-                    disabled={assessing || isClosed}
-                    className="inline-flex h-7 items-center gap-1.5 rounded-md bg-blue-600 px-3 text-[11px] font-bold text-white hover:bg-blue-500 disabled:opacity-60"
-                  >
-                    {assessing && active ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3 fill-white" />}
-                    {analyzed ? "Rerun" : "Run"}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      data-testid={`regulation-run-${regulation.id}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onRun(regulation);
+                      }}
+                      disabled={assessing || isClosed}
+                      className="inline-flex h-7 items-center gap-1.5 rounded-md bg-blue-600 px-3 text-[11px] font-bold text-white hover:bg-blue-500 disabled:opacity-60"
+                    >
+                      {assessing && active ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3 fill-white" />}
+                      {analyzed ? "Rerun" : "Run"}
+                    </button>
+                    <button
+                      type="button"
+                      data-testid={`regulation-delete-${regulation.id}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onDelete(regulation.id);
+                      }}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-750 bg-slate-800 text-slate-400 hover:border-rose-500 hover:text-rose-400 transition"
+                      title="Delete Regulation"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 </div>
               </article>
             );
