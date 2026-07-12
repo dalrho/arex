@@ -5,6 +5,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import api_router
 from app.core.config import settings
+from app.core.exceptions import LLMConfigurationError
+from fastapi.responses import JSONResponse
+from fastapi import Request
 
 # Setup structured logging
 logging.basicConfig(
@@ -18,6 +21,13 @@ app = FastAPI(
     description="Regulatory compliance intelligence platform for FDA 21 CFR Part 11",
     version="1.0.0",
 )
+
+@app.exception_handler(LLMConfigurationError)
+async def llm_configuration_exception_handler(request: Request, exc: LLMConfigurationError):
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "No LLM provider configured. Configure an API key to use AI features."},
+    )
 
 # CORS middleware mapping from configuration settings
 if settings.CORS_ORIGINS:

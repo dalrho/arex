@@ -309,6 +309,7 @@ export default function RemediationReviewPage({ params }: { params: { id: string
         <AssessmentLoadingView 
           regulationTitle={regulation?.title} 
           documents={relatedDocs.length > 0 ? relatedDocs : undefined}
+          affectedFileCount={relatedDocs.length > 0 ? relatedDocs.length : null}
         />
       </div>
     );
@@ -510,15 +511,24 @@ function DraftCard({
   const isApproved = currentStatus === "APPROVED";
   const isRejected = currentStatus === "REJECTED";
   const isUnderReview = currentStatus === "UNDER_REVIEW" || currentStatus === "PENDING_REVIEW";
-  
+  const docFilename = document ? document.filename : "Standard Operating Procedure";
+  const isProposedNewSOP = docFilename.startsWith("Proposed New SOP");
+
   return (
     <section className="overflow-hidden rounded-xl border border-slate-800 bg-[#081024]/60 backdrop-blur-sm shadow-md">
       {/* SOP Info Header */}
       <div className="border-b border-slate-800 bg-[#0f1b3a]/50 px-6 py-4 flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h3 className="text-sm font-extrabold uppercase text-slate-100 tracking-wider">
-            {document ? document.filename : "Standard Operating Procedure"}
-          </h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-extrabold uppercase text-slate-100 tracking-wider">
+              {docFilename}
+            </h3>
+            {isProposedNewSOP && (
+              <span className="inline-flex items-center rounded-md bg-emerald-500/10 px-2 py-1 text-xs font-medium text-emerald-400 ring-1 ring-inset ring-emerald-500/20">
+                Proposed New SOP
+              </span>
+            )}
+          </div>
           <p className="text-xs text-slate-400 mt-1">
             Document ID: {draft.sopId || draft.document_id} | Version: {document?.version ?? 1}
           </p>
@@ -533,7 +543,7 @@ function DraftCard({
         <div className="p-6 bg-[#040914]/20">
           <p className="text-xs font-bold uppercase text-slate-500 tracking-wider mb-4">Current SOP Text</p>
           <div className="whitespace-pre-line text-sm leading-7 text-slate-300 font-mono bg-slate-950/40 p-4 rounded-lg border border-slate-900/60 min-h-[220px]">
-            {draft.currentContent || draft.original_text}
+            {isProposedNewSOP ? "N/A (Proposed New SOP)" : (draft.currentContent || draft.original_text)}
           </div>
         </div>
         <div className="p-6 bg-[#0c1630]/20">
