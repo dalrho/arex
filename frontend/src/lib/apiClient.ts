@@ -16,10 +16,16 @@ import type {
 } from "@/types/api";
 
 export interface AIStatusResponse {
-  mode: "online" | "offline";
+  mode: "online" | "offline" | "hackathon" | "developer";
+  provider: string;
   model: string | null;
   embedding_model: string | null;
+  inference_label: string;
+  cumulative_tokens: number;
+  prompt_tokens: number;
+  completion_tokens: number;
   gemini_key_configured: boolean;
+  fireworks_key_configured: boolean;
   reason: string | null;
 }
 

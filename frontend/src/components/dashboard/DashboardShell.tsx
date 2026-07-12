@@ -15,7 +15,12 @@ import {
   X,
 } from "lucide-react";
 import clsx from "clsx";
-import { clearSession, getCurrentUser } from "@/lib/apiClient";
+import {
+  clearSession,
+  getAiStatus,
+  getCurrentUser,
+  type AIStatusResponse,
+} from "@/lib/apiClient";
 import type { AuthUser } from "@/types/api";
 
 const BRAND_LOGO_SRC = "/brand/arex-logo.png";
@@ -140,6 +145,7 @@ function Sidebar({
 
       {/* Navigation links */}
       <nav className="flex-1 px-5 py-6 flex flex-col gap-6">
+        <InferenceStatusBadge />
         <div className="space-y-1">
           <p className="px-4 text-[10px] font-bold uppercase tracking-widest text-slate-600 mb-2">Workspace</p>
           {navigation.map((item) => (
@@ -203,6 +209,94 @@ function Sidebar({
         )}
       </div>
     </aside>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// InferenceStatusBadge — demo AI / AMD compute indicator (no settings icon)
+// ---------------------------------------------------------------------------
+function InferenceStatusBadge() {
+  const [status, setStatus] = useState<AIStatusResponse | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function refresh() {
+      try {
+        const next = await getAiStatus();
+        if (!cancelled) setStatus(next);
+      } catch {
+        if (!cancelled) {
+          setStatus({
+            mode: "offline",
+            provider: "Unavailable",
+            model: null,
+            embedding_model: null,
+            inference_label: "Offline · Mock",
+            cumulative_tokens: 0,
+            prompt_tokens: 0,
+            completion_tokens: 0,
+            gemini_key_configured: false,
+            fireworks_key_configured: false,
+            reason: "Unable to reach AI status endpoint.",
+          });
+        }
+      }
+    }
+
+    void refresh();
+    const id = window.setInterval(() => {
+      void refresh();
+    }, 5000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, []);
+
+  const isOffline = !status || status.mode === "offline";
+  const isHackathon = status?.mode === "hackathon";
+  const label = status?.inference_label ?? "Checking inference…";
+  const tokens = status?.cumulative_tokens ?? 0;
+
+  return (
+    <div
+      className={clsx(
+        "rounded-lg border px-3 py-2.5",
+        isOffline
+          ? "border-slate-700/80 bg-slate-900/60"
+          : isHackathon
+            ? "border-emerald-500/30 bg-emerald-950/40"
+            : "border-emerald-500/25 bg-emerald-950/30"
+      )}
+      title={status?.reason ?? undefined}
+    >
+      <div className="flex items-start gap-2.5">
+        <span
+          className={clsx(
+            "mt-1.5 h-2 w-2 flex-shrink-0 rounded-full",
+            isOffline
+              ? "bg-slate-500"
+              : "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.7)]"
+          )}
+          aria-hidden
+        />
+        <div className="min-w-0 flex-1">
+          <p
+            className={clsx(
+              "text-[11px] font-semibold leading-snug",
+              isOffline ? "text-slate-400" : "text-emerald-300"
+            )}
+          >
+            {label}
+          </p>
+          <p className="mt-1 text-[10px] text-slate-500">
+            Tokens used: {tokens.toLocaleString()}
+          </p>
+        </div>
+      </div>
+    </div>
   );
 }
 
