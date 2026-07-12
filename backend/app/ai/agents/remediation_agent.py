@@ -2,6 +2,7 @@ import os
 import uuid
 import logging
 import difflib
+from datetime import datetime, timezone
 from typing import Dict, Any, List
 from pydantic import BaseModel
 
@@ -41,6 +42,131 @@ def generate_diff_metadata(original: str, proposed: str) -> Dict[str, List[str]]
         "removed": removed
     }
 
+
+def _generate_proposed_new_sop(
+    db,
+    regulation: RegulationUpdate,
+    organization_id_str: str,
+) -> List[str]:
+    """
+    Create or update a Proposed New SOP draft when there are no usable matched documents.
+    Returns a list of remediation draft ID strings.
+    """
+    import docx
+
+    draft_ids: List[str] = []
+    safe_title = "".join(c for c in regulation.title if c.isalnum() or c in (" ", "-", "_")).strip()
+    filename = f"Proposed New SOP - {safe_title}.docx"
+
+    existing_draft = db.query(RemediationDraft).join(Document, RemediationDraft.sop_id == Document.id).filter(
+        RemediationDraft.regulation_id == regulation.id,
+        Document.filename.like("Proposed New SOP - %")
+    ).first()
+
+    if existing_draft:
+        logger.info(f"Proposed new SOP draft already exists for regulation {regulation.id}. Re-generating draft content.")
+        new_doc = db.query(Document).filter(Document.id == existing_draft.sop_id).first()
+    else:
+        unique_file_id = uuid.uuid4()
+        file_path = f"/app/storage/{unique_file_id}.docx"
+
+        doc_obj = docx.Document()
+        doc_obj.add_paragraph("Proposed New SOP Placeholder")
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        doc_obj.save(file_path)
+
+        new_doc = Document(
+            id=unique_file_id,
+            organization_id=uuid.UUID(organization_id_str),
+            filename=filename,
+            file_path=file_path,
+            version=1,
+            parsed_text="[Proposed New SOP Placeholder]",
+            created_at=datetime.now(timezone.utc)
+        )
+        db.add(new_doc)
+        db.commit()
+        db.refresh(new_doc)
+
+    system_prompt = (
+        "You are an expert Compliance Officer and GxP technical writer. "
+        "Write a complete, professional, standalone Standard Operating Procedure (SOP) "
+        "from scratch in response to the provided FDA regulation update. "
+        "The document MUST be GxP-compliant, structured, and complete. "
+        "Do not include snippets, comments, or summaries — output the full, complete document text."
+    )
+
+    user_prompt = (
+        f"Write a complete, compliance SOP from scratch for: {filename}\n\n"
+        f"FDA Regulation Update:\n"
+        f"Title: {regulation.title}\n"
+        f"Content Summary:\n{regulation.summary or regulation.raw_content}\n\n"
+        f"The text should have standard sections: 1.0 Purpose, 2.0 Scope, 3.0 Responsibilities, 4.0 Procedure, etc."
+    )
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt}
+    ]
+
+    logger.info("Invoking LLM to generate Proposed New SOP from scratch...")
+    try:
+        result = llm_client.get_completion(
+            messages=messages,
+            response_model=RemediationAgentOutput,
+            temperature=0.0
+        )
+    except Exception as llm_err:
+        logger.error(f"LLM call failed for new SOP generation: {llm_err}. Using stub fallback.")
+        result = RemediationAgentOutput(
+            proposed_text=(
+                f"1.0 Purpose\n"
+                f"This SOP establishes procedures to comply with: {regulation.title}.\n\n"
+                f"2.0 Scope\n"
+                f"Applies to all personnel involved in relevant operations.\n\n"
+                f"3.0 Responsibilities\n"
+                f"Quality Assurance is responsible for implementation and training.\n\n"
+                f"4.0 Procedure\n"
+                f"4.1 Review the requirements of {regulation.title}.\n"
+                f"4.2 Update affected processes to align with regulation requirements.\n"
+                f"4.3 Document all changes and obtain QA approval.\n\n"
+                f"5.0 References\n"
+                f"- {regulation.title}\n\n"
+                f"[NOTE: This is an AI-generated stub. The LLM API was unavailable (quota exceeded). "
+                f"Please edit this draft with the full SOP content.]"
+            ),
+            citations=[regulation.title],
+            rationale=f"Stub draft generated due to LLM API unavailability. Manual review required."
+        )
+
+    if existing_draft:
+        existing_draft.proposed_revision = result.proposed_text
+        existing_draft.diff_content = {"added": result.proposed_text.splitlines(), "removed": []}
+        existing_draft.explanation = result.rationale
+        existing_draft.status = "Draft"
+        db.commit()
+        db.refresh(existing_draft)
+        draft_ids.append(str(existing_draft.id))
+    else:
+        new_draft = RemediationDraft(
+            id=uuid.uuid4(),
+            sop_id=new_doc.id,
+            regulation_id=regulation.id,
+            proposed_revision=result.proposed_text,
+            current_content="",
+            diff_content={"added": result.proposed_text.splitlines(), "removed": []},
+            explanation=result.rationale,
+            status="Draft"
+        )
+        db.add(new_draft)
+        db.commit()
+        db.refresh(new_draft)
+        draft_ids.append(str(new_draft.id))
+
+    logger.info(f"Remediation Agent successfully generated proposed new SOP draft: {draft_ids[0]}")
+    return draft_ids
+
+
 def run_remediation_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     """
     LangGraph agent node that reviews impacted SOP documents and proposes draft revisions.
@@ -62,8 +188,6 @@ def run_remediation_agent(state: Dict[str, Any]) -> Dict[str, Any]:
     
     try:
         from app.core.exceptions import LLMConfigurationError
-        from datetime import datetime, timezone
-        import docx
         
         regulation = db.query(RegulationUpdate).filter(
             RegulationUpdate.id == uuid.UUID(regulation_id_str)
@@ -74,116 +198,7 @@ def run_remediation_agent(state: Dict[str, Any]) -> Dict[str, Any]:
 
         if not matched_doc_ids:
             logger.info("No matched document IDs found. Generating a Proposed New SOP from scratch...")
-            safe_title = "".join(c for c in regulation.title if c.isalnum() or c in (" ", "-", "_")).strip()
-            filename = f"Proposed New SOP - {safe_title}.docx"
-            
-            # Check if a draft pointing to a Proposed New SOP for this regulation already exists
-            existing_draft = db.query(RemediationDraft).join(Document, RemediationDraft.sop_id == Document.id).filter(
-                RemediationDraft.regulation_id == regulation.id,
-                Document.filename.like("Proposed New SOP - %")
-            ).first()
-            
-            if existing_draft:
-                logger.info(f"Proposed new SOP draft already exists for regulation {regulation.id}. Re-generating draft content.")
-                new_doc = db.query(Document).filter(Document.id == existing_draft.sop_id).first()
-            else:
-                unique_file_id = uuid.uuid4()
-                file_path = f"/app/storage/{unique_file_id}.docx"
-                
-                doc_obj = docx.Document()
-                doc_obj.add_paragraph("Proposed New SOP Placeholder")
-                os.makedirs(os.path.dirname(file_path), exist_ok=True)
-                doc_obj.save(file_path)
-                
-                new_doc = Document(
-                    id=unique_file_id,
-                    organization_id=uuid.UUID(organization_id_str),
-                    filename=filename,
-                    file_path=file_path,
-                    version=1,
-                    parsed_text="[Proposed New SOP Placeholder]",
-                    created_at=datetime.now(timezone.utc)
-                )
-                db.add(new_doc)
-                db.commit()
-                db.refresh(new_doc)
-                
-            system_prompt = (
-                "You are an expert Compliance Officer and GxP technical writer. "
-                "Write a complete, professional, standalone Standard Operating Procedure (SOP) "
-                "from scratch in response to the provided FDA regulation update. "
-                "The document MUST be GxP-compliant, structured, and complete. "
-                "Do not include snippets, comments, or summaries — output the full, complete document text."
-            )
-            
-            user_prompt = (
-                f"Write a complete, compliance SOP from scratch for: {filename}\n\n"
-                f"FDA Regulation Update:\n"
-                f"Title: {regulation.title}\n"
-                f"Content Summary:\n{regulation.summary or regulation.raw_content}\n\n"
-                f"The text should have standard sections: 1.0 Purpose, 2.0 Scope, 3.0 Responsibilities, 4.0 Procedure, etc."
-            )
-            
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ]
-            
-            logger.info("Invoking LLM to generate Proposed New SOP from scratch...")
-            try:
-                result = llm_client.get_completion(
-                    messages=messages,
-                    response_model=RemediationAgentOutput,
-                    temperature=0.0
-                )
-            except Exception as llm_err:
-                logger.error(f"LLM call failed for new SOP generation: {llm_err}. Using stub fallback.")
-                result = RemediationAgentOutput(
-                    proposed_text=(
-                        f"1.0 Purpose\n"
-                        f"This SOP establishes procedures to comply with: {regulation.title}.\n\n"
-                        f"2.0 Scope\n"
-                        f"Applies to all personnel involved in relevant operations.\n\n"
-                        f"3.0 Responsibilities\n"
-                        f"Quality Assurance is responsible for implementation and training.\n\n"
-                        f"4.0 Procedure\n"
-                        f"4.1 Review the requirements of {regulation.title}.\n"
-                        f"4.2 Update affected processes to align with regulation requirements.\n"
-                        f"4.3 Document all changes and obtain QA approval.\n\n"
-                        f"5.0 References\n"
-                        f"- {regulation.title}\n\n"
-                        f"[NOTE: This is an AI-generated stub. The LLM API was unavailable (quota exceeded). "
-                        f"Please edit this draft with the full SOP content.]"
-                    ),
-                    citations=[regulation.title],
-                    rationale=f"Stub draft generated due to LLM API unavailability. Manual review required."
-                )
-            
-            if existing_draft:
-                existing_draft.proposed_revision = result.proposed_text
-                existing_draft.diff_content = {"added": result.proposed_text.splitlines(), "removed": []}
-                existing_draft.explanation = result.rationale
-                existing_draft.status = "Draft"
-                db.commit()
-                db.refresh(existing_draft)
-                draft_ids.append(str(existing_draft.id))
-            else:
-                new_draft = RemediationDraft(
-                    id=uuid.uuid4(),
-                    sop_id=new_doc.id,
-                    regulation_id=regulation.id,
-                    proposed_revision=result.proposed_text,
-                    current_content="",
-                    diff_content={"added": result.proposed_text.splitlines(), "removed": []},
-                    explanation=result.rationale,
-                    status="Draft"
-                )
-                db.add(new_draft)
-                db.commit()
-                db.refresh(new_draft)
-                draft_ids.append(str(new_draft.id))
-                
-            logger.info(f"Remediation Agent successfully generated proposed new SOP draft: {draft_ids[0]}")
+            draft_ids = _generate_proposed_new_sop(db, regulation, organization_id_str)
             return {"remediation_draft_ids": draft_ids}
 
         # Read system prompt
@@ -344,6 +359,12 @@ def run_remediation_agent(state: Dict[str, Any]) -> Dict[str, Any]:
                 db.commit()
                 db.refresh(new_draft)
                 draft_ids.append(str(new_draft.id))
+
+        if not draft_ids and matched_doc_ids:
+            logger.warning(
+                "All matched documents were skipped or failed; falling back to Proposed New SOP generation."
+            )
+            draft_ids = _generate_proposed_new_sop(db, regulation, organization_id_str)
 
         logger.info(f"Remediation Agent successfully generated {len(draft_ids)} drafts.")
         return {"remediation_draft_ids": draft_ids}

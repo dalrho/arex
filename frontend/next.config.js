@@ -20,6 +20,11 @@ const collectionRoots = [
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // Remediation draft generation can take several minutes (LLM per SOP).
+  // Default rewrite proxy timeout (~30s) aborts with a 500 while backend continues.
+  experimental: {
+    proxyTimeout: 600_000,
+  },
   // Rewrite requests starting with /api to the FastAPI backend running on port 8000
   async rewrites() {
     return [

@@ -42,6 +42,25 @@ def helper_map_regulation_response(reg: RegulationUpdate) -> RegulationResponse:
         res.urgency = clf.get("urgency")
         res.affected_business_areas = clf.get("affected_business_areas")
         res.rationale = clf.get("rationale")
+
+    # Prefer impact-assessment rationale when upload-time classification failed.
+    rationale = res.rationale or ""
+    if rationale.startswith("Analysis failed due to error:") or "fireworks-ai package is not installed" in rationale:
+        try:
+            from app.core.dependencies import SessionLocal
+            from app.models.impact_assessment import ImpactAssessment
+            with SessionLocal() as _db:
+                assessment = (
+                    _db.query(ImpactAssessment)
+                    .filter(ImpactAssessment.regulation_id == reg.id)
+                    .order_by(ImpactAssessment.created_at.desc())
+                    .first()
+                )
+                if assessment and assessment.rationale:
+                    res.rationale = assessment.rationale
+        except Exception:
+            pass
+
     return res
 
 
@@ -208,6 +227,7 @@ def ingest_regulation(
     except Exception as e:
         logger.error(f"LangGraph pipeline failed for regulation {reg.id}: {e}")
         # Ingestion succeeds even if AI pipeline fails
+        db.refresh(reg)
 
     return helper_map_regulation_response(reg)
 
@@ -238,7 +258,9 @@ async def upload_regulation_document(
       2. Extract text from the PDF
       3. Create a RegulationUpdate record tagged source=DOCUMENT_UPLOAD
       4. Generate embeddings and store in the vector knowledge base
-      5. Trigger the AI pipeline for classification
+
+    Returns immediately with status "Not Analyzed". Classification and the
+    rest of the AI pipeline run when the user clicks Run (same as FR ingest).
     """
     from app.services.regulation_parser.pdf_parser import extract_text_from_pdf
     from app.services.embeddings.embedding_service import embedding_service
@@ -366,29 +388,6 @@ async def upload_regulation_document(
             logger.info(f"Indexed {len(chunks)} chunks for regulation {reg.id} in vector DB")
     except Exception as e:
         logger.warning(f"Vector indexing skipped for regulation {reg.id}: {e}")
-
-    # 8. Trigger AI classification pipeline
-    try:
-        final_state = trigger_agent_pipeline(
-            regulation_id=str(reg.id),
-            organization_id=tenant_id,
-            raw_content=raw_content,
-        )
-        reg.parsed_sections = {
-            "classification": {
-                "relevant": final_state.get("relevant", False),
-                "category": final_state.get("category", "other"),
-                "urgency": final_state.get("urgency", "low"),
-                "affected_business_areas": final_state.get("affected_business_areas", []),
-                "rationale": final_state.get("rationale", ""),
-            }
-        }
-        db.add(reg)
-        db.commit()
-        db.refresh(reg)
-        logger.info(f"AI pipeline complete for uploaded regulation {reg.id}")
-    except Exception as e:
-        logger.error(f"AI pipeline failed for uploaded regulation {reg.id}: {e}")
 
     return helper_map_regulation_response(reg)
 

@@ -62,7 +62,7 @@ class Settings(BaseSettings):
     # Fireworks AI Settings (Online AI Mode for LLM completion)
     # -----------------------------------------------------------------------
     FIREWORKS_API_KEY: str = ""
-    FIREWORKS_MODEL: str = "accounts/fireworks/models/qwen3-32b"
+    FIREWORKS_MODEL: str = "accounts/fireworks/models/gpt-oss-120b"
     FIREWORKS_EMBEDDING_MODEL: str = "nomic-ai/nomic-embed-text-v1.5"
 
     # -----------------------------------------------------------------------

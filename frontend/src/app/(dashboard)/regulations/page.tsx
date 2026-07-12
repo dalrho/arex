@@ -1141,7 +1141,18 @@ function AssessmentSummary({
           <p className="mt-1 text-4xl font-extrabold text-red-300">{Math.round(impact.risk_score)}</p>
         </div>
       </div>
-      <CleanContentDisplay text={regulation?.rationale || regulation?.raw_content} />
+      <CleanContentDisplay
+        text={
+          (() => {
+            const classificationRationale = regulation?.rationale || "";
+            const classificationFailed =
+              classificationRationale.startsWith("Analysis failed due to error:") ||
+              classificationRationale.includes("fireworks-ai package is not installed");
+            if (classificationFailed && impact?.rationale) return impact.rationale;
+            return classificationRationale || regulation?.raw_content;
+          })()
+        }
+      />
 
       <div className="mt-6 flex flex-wrap gap-2">
         {impact.affected_departments.map((department) => (
@@ -1537,7 +1548,7 @@ function UploadRegulationModal({
             </button>
             <button type="submit" disabled={!file || !title.trim() || uploading}
               className="flex-1 rounded-lg bg-blue-600 py-2.5 text-sm font-bold text-white hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2">
-              {uploading ? <><Loader2 className="h-4 w-4 animate-spin" /> Uploading…</> : <><Upload className="h-4 w-4" /> Upload & Process</>}
+              {uploading ? <><Loader2 className="h-4 w-4 animate-spin" /> Uploading…</> : <><Upload className="h-4 w-4" /> Upload</>}
             </button>
           </div>
         </form>
