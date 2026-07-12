@@ -28,7 +28,10 @@ import {
   runImpactAssessment,
   submitApprovalDecision,
   updateRemediation,
-  resetRemediation
+  resetRemediation,
+  listTasks,
+  generateImplementationTasks,
+  updateRegulationStatus,
 } from "@/lib/apiClient";
 import { formatDateTime } from "@/lib/format";
 import type {
@@ -36,6 +39,7 @@ import type {
   ImpactResponse,
   RegulationResponse,
   RemediationResponse,
+  TaskResponse,
 } from "@/types/api";
 
 const MIN_ASSESSMENT_ANIMATION_MS = 6500;
@@ -92,6 +96,9 @@ export default function RemediationReviewPage({ params }: { params: { id: string
   const [assessing, setAssessing] = useState(false);
   const [submittingIds, setSubmittingIds] = useState<Record<string, boolean>>({});
   const [message, setMessage] = useState<string | null>(null);
+
+  const [tasks, setTasks] = useState<TaskResponse[]>([]);
+  const [generatingTasks, setGeneratingTasks] = useState(false);
 
   const relatedDocs = React.useMemo(() => {
     return drafts.map((d) => {
@@ -174,6 +181,16 @@ export default function RemediationReviewPage({ params }: { params: { id: string
       setDrafts([initialDraft]);
     }
 
+    try {
+      const allTasks = await listTasks();
+      const existingTasks = allTasks.filter(
+        (t) => t.regulation_id === initialDraft.regulation_id && t.status !== "REJECTED"
+      );
+      setTasks(existingTasks);
+    } catch {
+      setTasks([]);
+    }
+
     void loadRegulations();
     void loadRailDrafts();
     setLoading(false);
@@ -182,6 +199,26 @@ export default function RemediationReviewPage({ params }: { params: { id: string
   useEffect(() => {
     void load();
   }, [load]);
+
+  async function handleGenerateTasks() {
+    if (!regulation) return;
+    setGeneratingTasks(true);
+    setMessage(null);
+    try {
+      const res = await generateImplementationTasks(regulation.id);
+      if (res.requires_tasks === false) {
+        await updateRegulationStatus(regulation.id, "Closed");
+        router.push(`/regulations?success_msg=${encodeURIComponent(res.message || "No operational tasks required.")}`);
+      } else {
+        router.push(`/cases/${regulation.id}/implementation`);
+      }
+    } catch (err: any) {
+      alert(err.message || "Failed to generate tasks.");
+    } finally {
+      setGeneratingTasks(false);
+    }
+  }
+
 
   async function handleDecision(draftId: string, decision: "APPROVED" | "REJECTED" | "UNDER_REVIEW") {
     setSubmittingIds((prev) => ({ ...prev, [draftId]: true }));
@@ -321,11 +358,11 @@ export default function RemediationReviewPage({ params }: { params: { id: string
         <main className="px-6 py-6 md:px-10">
           <div className="mx-auto max-w-6xl pb-28">
             <Link
-              href="/regulations"
+              href={regulation ? `/regulations?case_id=${regulation.id}` : "/regulations"}
               className="inline-flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-blue-300"
             >
               <ArrowLeft className="h-4 w-4" />
-              Back to Regulatory Updates
+              Back to Compliance Case Regulations
             </Link>
 
             {/* Regulation Header Context */}
@@ -363,14 +400,27 @@ export default function RemediationReviewPage({ params }: { params: { id: string
               </div>
 
               {allApproved && (
-                <Link
-                  href={`/tasks?regulation_id=${regulation?.id}`}
-                  className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-500 transition shadow-lg shadow-emerald-950/50"
-                >
-                  <ClipboardList className="h-4 w-4" />
-                  View Implementation Tasks
-                  <ChevronRight className="h-4 w-4" />
-                </Link>
+                tasks.length > 0 ? (
+                  <Link
+                    href={`/cases/${regulation?.id}/implementation`}
+                    className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-500 transition shadow-lg shadow-emerald-950/50"
+                  >
+                    <ClipboardList className="h-4 w-4" />
+                    View Implementation Plan
+                    <ChevronRight className="h-4 w-4" />
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void handleGenerateTasks()}
+                    disabled={generatingTasks}
+                    className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-500 transition shadow-lg shadow-blue-950/50 disabled:opacity-50"
+                  >
+                    {generatingTasks ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardList className="h-4 w-4" />}
+                    Generate Implementation Plan
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                )
               )}
             </div>
 

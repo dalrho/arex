@@ -25,20 +25,12 @@ services:
       # AI Mode — set to "online" to use live Gemini inference
       # Set to "offline" for mock-only mode (safe for demos without API access)
       - AI_MODE=${AI_MODE:-online}
-      - LLM_API_KEY=${LLM_API_KEY:-}
-      - LLM_API_BASE=${LLM_API_BASE:-}
-      - LLM_MODEL_NAME=${LLM_MODEL_NAME:-gemini-2.5-flash}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - GEMINI_MODEL_NAME=${GEMINI_MODEL_NAME:-gemini-2.5-flash}
       - GEMINI_EMBEDDING_MODEL=gemini-embedding-001
       - FIREWORKS_API_KEY=${FIREWORKS_API_KEY:-}
       - FIREWORKS_MODEL=${FIREWORKS_MODEL:-accounts/fireworks/models/deepseek-v4-pro}
-      - FIREWORKS_EMBEDDING_MODEL=${FIREWORKS_EMBEDDING_MODEL:-nomic-ai/nomic-embed-text-v1.5}
-      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
-      - JIRA_URL=${JIRA_URL:-}
-      - JIRA_EMAIL=${JIRA_EMAIL:-}
-      - JIRA_API_TOKEN=${JIRA_API_TOKEN:-}
-      - JIRA_PROJECT_KEY=${JIRA_PROJECT_KEY:-SCRUM}
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
   # Frontend local dev overrides: port exposure and Next.js hot reload volumes
   frontend:

@@ -4,7 +4,6 @@ import random
 from typing import List
 
 from app.core.config import settings
-from app.core.exceptions import LLMConfigurationError
 
 logger = logging.getLogger("arex.embedding-service")
 
@@ -44,9 +43,9 @@ class EmbeddingService:
         """
         if self.is_offline_mode():
             logger.warning(
-                "[EmbeddingService] Offline mode active: raising LLMConfigurationError."
+                "[EmbeddingService] Offline mode: returning deterministic mock embeddings."
             )
-            raise LLMConfigurationError("No LLM provider configured. Configure an API key to use AI features.")
+            return [self._generate_mock_embedding(text) for text in texts]
 
         mode = self.settings.AI_MODE.strip().lower()
         if mode == "hackathon":
@@ -66,6 +65,11 @@ class EmbeddingService:
             else:
                 return self._call_gemini_embeddings(texts)
         except Exception as e:
+            if not self.is_offline_mode():
+                logger.error(
+                    f"[EmbeddingService] {provider} embedding call failed: {e}."
+                )
+                raise e
             logger.error(
                 f"[EmbeddingService] {provider} embedding call failed: {e}. "
                 "Falling back to mock embeddings."
@@ -75,7 +79,6 @@ class EmbeddingService:
     def _call_fireworks_embeddings(self, texts: List[str]) -> List[List[float]]:
         """Calls Fireworks AI embeddings API via HTTP request."""
         import httpx
-        import time
         
         url = "https://api.fireworks.ai/inference/v1/embeddings"
         headers = {
@@ -92,21 +95,15 @@ class EmbeddingService:
         if "nomic" in model.lower():
             payload["dimensions"] = 768
 
-        attempts = 5
-        data = None
-        for attempt in range(1, attempts + 1):
-            try:
-                with httpx.Client(timeout=30.0) as client:
-                    response = client.post(url, headers=headers, json=payload)
-                    response.raise_for_status()
-                    data = response.json()
-                break
-            except Exception as exc:
-                logger.warning(f"[EmbeddingService] Fireworks HTTP error on attempt {attempt}/{attempts}: {exc}")
-                if attempt == attempts:
-                    raise exc
-                time.sleep(2 ** attempt)
- 
+        try:
+            with httpx.Client(timeout=30.0) as client:
+                response = client.post(url, headers=headers, json=payload)
+                response.raise_for_status()
+                data = response.json()
+        except Exception as exc:
+            logger.error(f"[EmbeddingService] Fireworks HTTP error: {exc}")
+            raise
+
         embeddings = [item["embedding"] for item in data.get("data", [])]
         logger.info(
             f"[EmbeddingService] Successfully embedded {len(texts)} text(s) "
@@ -116,7 +113,6 @@ class EmbeddingService:
 
     def _call_gemini_embeddings(self, texts: List[str]) -> List[List[float]]:
         """Calls Google Gemini text-embedding-004 via the google.genai SDK."""
-        import time
         try:
             from google import genai  # type: ignore
             from google.genai import types  # type: ignore
@@ -135,33 +131,18 @@ class EmbeddingService:
 
         embeddings = []
         for text in texts:
-            attempts = 5
-            for attempt in range(1, attempts + 1):
-                try:
-                    response = client.models.embed_content(
-                        model=model,
-                        contents=text,
-                        config=config,
-                    )
-                    # The new SDK returns response.embeddings (list of ContentEmbedding)
-                    embedding_values = response.embeddings[0].values
-                    embeddings.append(embedding_values)
-                    logger.debug(
-                        f"[EmbeddingService] Embedded {len(text)} chars → "
-                        f"{len(embedding_values)}d vector."
-                    )
-                    break
-                except Exception as e:
-                    logger.warning(
-                        f"[EmbeddingService] Gemini embedding call failed on attempt {attempt}/{attempts}: {e}"
-                    )
-                    if attempt == attempts:
-                        logger.error(
-                            f"[EmbeddingService] All {attempts} embedding attempts failed. Falling back to mock embedding."
-                        )
-                        embeddings.append(self._generate_mock_embedding(text))
-                        break
-                    time.sleep(min(4, 2 ** attempt))
+            response = client.models.embed_content(
+                model=model,
+                contents=text,
+                config=config,
+            )
+            # The new SDK returns response.embeddings (list of ContentEmbedding)
+            embedding_values = response.embeddings[0].values
+            embeddings.append(embedding_values)
+            logger.debug(
+                f"[EmbeddingService] Embedded {len(text)} chars → "
+                f"{len(embedding_values)}d vector."
+            )
 
         logger.info(
             f"[EmbeddingService] Successfully embedded {len(texts)} text(s) "

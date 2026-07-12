@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from typing import Any, List, Optional
 import hashlib
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status, Response
 from pydantic import BaseModel as PydanticBaseModel
 from sqlalchemy.orm import Session
 
@@ -430,3 +430,60 @@ def update_regulation_status(
         db.commit()
         db.refresh(regulation)
     return helper_map_regulation_response(regulation)
+
+
+@router.delete("/{regulation_id}", status_code=status.HTTP_204_NO_CONTENT, response_class=Response, response_model=None)
+def delete_regulation(
+    regulation_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_tenant_id),
+) -> None:
+    """
+    Delete a regulation update.
+    Blocks deletion if there are any active remediation drafts or implementation tasks
+    to satisfy 21 CFR Part 11 and prevent orphaned GxP records.
+    """
+    regulation = (
+        db.query(RegulationUpdate)
+        .filter(RegulationUpdate.id == regulation_id)
+        .first()
+    )
+    if not regulation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Regulation not found",
+        )
+
+    # Enforce GxP: block deletion if active drafts or implementation tasks exist
+    if len(regulation.remediation_drafts) > 0 or len(regulation.tasks) > 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot delete regulation: active remediation drafts or implementation tasks exist. Please reset the workspace before deleting.",
+        )
+
+    # 1. Clean up local PDF files from disk
+    if regulation.source == REGULATION_SOURCE_DOCUMENT_UPLOAD and regulation.source_url:
+        if regulation.source_url.startswith("upload://regulations/"):
+            filename = regulation.source_url.replace("upload://regulations/", "")
+            file_path = os.path.join("/app/storage/regulations", filename)
+            try:
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                    logger.info(f"Deleted regulation file from disk: {file_path}")
+            except Exception as e:
+                logger.warning(f"Failed to delete regulation file {file_path}: {e}")
+
+    # 2. Clean up Qdrant vector chunks
+    try:
+        from app.services.vector_db.qdrant_client import vector_db_client
+        vector_db_client.delete_document_chunks(regulation.id)
+        logger.info(f"Deleted vector chunks for regulation {regulation.id} from Qdrant")
+    except Exception as e:
+        logger.warning(f"Failed to delete Qdrant chunks for regulation {regulation.id}: {e}")
+
+    # 3. Database delete (cascades to impact_assessments)
+    db.delete(regulation)
+    db.commit()
+
+    return
+
