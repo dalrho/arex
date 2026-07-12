@@ -89,19 +89,20 @@ def trigger_impact_assessment(
         )
         if needs_reclassify and reg.raw_content:
             try:
-                from app.ai.graph_builder import trigger_agent_pipeline
-                final_state = trigger_agent_pipeline(
-                    regulation_id=str(reg.id),
-                    organization_id=tenant_id,
-                    raw_content=reg.raw_content,
-                )
+                from app.ai.agents.regulatory_intelligence_agent import run_regulatory_intelligence
+                ri_state = {
+                    "regulation_id": str(reg.id),
+                    "organization_id": tenant_id,
+                    "raw_content": reg.raw_content,
+                }
+                ri_result = run_regulatory_intelligence(ri_state)
                 sections = dict(reg.parsed_sections) if isinstance(reg.parsed_sections, dict) else {}
                 sections["classification"] = {
-                    "relevant": final_state.get("relevant", False),
-                    "category": final_state.get("category", "other"),
-                    "urgency": final_state.get("urgency", "low"),
-                    "affected_business_areas": final_state.get("affected_business_areas", []),
-                    "rationale": final_state.get("rationale", ""),
+                    "relevant": ri_result.get("relevant", False),
+                    "category": ri_result.get("category", "other"),
+                    "urgency": ri_result.get("urgency", "low"),
+                    "affected_business_areas": ri_result.get("affected_business_areas", []),
+                    "rationale": ri_result.get("rationale", ""),
                 }
                 reg.parsed_sections = sections
                 from sqlalchemy.orm.attributes import flag_modified

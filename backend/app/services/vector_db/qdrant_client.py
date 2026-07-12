@@ -105,6 +105,9 @@ class VectorDBClient:
         Searches for semantically similar chunks belonging to the given organization.
         """
         self._ensure_collection()
+        import time
+        from app.core.profiler import RequestProfiler
+        t_start = time.time()
         try:
             # Enforce organization isolation using payload filtering
             query_filter = qdrant_models.Filter(
@@ -123,7 +126,7 @@ class VectorDBClient:
                 limit=limit
             )
 
-            return [
+            results = [
                 {
                     "document_id": r.payload["document_id"],
                     "organization_id": r.payload["organization_id"],
@@ -133,9 +136,13 @@ class VectorDBClient:
                 }
                 for r in response.points
             ]
+            RequestProfiler.log_metric("retrieved_chunks_count", len(results))
+            return results
         except Exception as e:
             logger.error(f"Failed to search Qdrant chunks: {e}")
             return []
+        finally:
+            RequestProfiler.log_metric("qdrant_retrieval_time", time.time() - t_start)
 
     def delete_document_chunks(self, document_id: uuid.UUID) -> None:
         """

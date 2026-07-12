@@ -2,6 +2,7 @@ import os
 import uuid
 import sqlite3
 import logging
+import time
 from typing import Dict, Any, List, Optional, TypedDict
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.sqlite import SqliteSaver
@@ -9,8 +10,6 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from app.core.dependencies import SessionLocal
 from app.services.compliance_impact.impact_engine import assess_compliance_impact
 from app.ai.agents.regulatory_intelligence_agent import run_regulatory_intelligence
-from app.ai.agents.remediation_agent import run_remediation_agent
-from app.ai.agents.implementation_agent import run_implementation_agent
 
 logger = logging.getLogger("arex.graph-builder")
 
@@ -31,12 +30,6 @@ class AgentState(TypedDict):
     impact_level: Optional[str]
     affected_departments: Optional[List[str]]
     matched_document_ids: Optional[List[str]]
-
-    # Node outputs: Remediation Drafts
-    remediation_draft_ids: Optional[List[str]]
-
-    # Node outputs: Implementation Tasks
-    task_ids: Optional[List[str]]
 
 
 def run_compliance_impact(state: AgentState) -> Dict[str, Any]:
@@ -94,11 +87,10 @@ def _build_graph(conn: sqlite3.Connection):
     """
     workflow = StateGraph(AgentState)
 
-    # Add all agents and processing nodes
+    # Only regulatory intelligence and compliance impact assessment.
+    # Remediation and implementation are user-driven via separate endpoints.
     workflow.add_node("regulatory_intelligence", run_regulatory_intelligence)
     workflow.add_node("compliance_impact", run_compliance_impact)
-    workflow.add_node("remediation", run_remediation_agent)
-    workflow.add_node("implementation_task", run_implementation_agent)
 
     # Configure flow entrypoint
     workflow.set_entry_point("regulatory_intelligence")
@@ -113,10 +105,8 @@ def _build_graph(conn: sqlite3.Connection):
         }
     )
 
-    # Connect remaining pipelines
-    workflow.add_edge("compliance_impact", "remediation")
-    workflow.add_edge("remediation", "implementation_task")
-    workflow.add_edge("implementation_task", END)
+    # Terminate after impact assessment — remediation is user-triggered
+    workflow.add_edge("compliance_impact", END)
 
     memory = SqliteSaver(conn=conn)
     return workflow.compile(checkpointer=memory), memory
@@ -207,10 +197,11 @@ def trigger_agent_pipeline(
         "impact_level": "Low",
         "affected_departments": [],
         "matched_document_ids": [],
-        "remediation_draft_ids": [],
-        "task_ids": []
     }
 
-    logger.info(f"Triggering LangGraph pipeline for Thread: {thread_id}")
+    logger.info(f"[Timing] Triggering LangGraph pipeline for Thread: {thread_id}")
+    t0 = time.time()
     final_state = graph.invoke(initial_state, config=config)
+    elapsed = time.time() - t0
+    logger.info(f"[Timing] LangGraph pipeline completed in {elapsed:.2f}s for Thread: {thread_id}")
     return final_state
