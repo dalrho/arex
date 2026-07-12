@@ -73,8 +73,9 @@ def trigger_impact_assessment(
             db=db
         )
         
-        # Update case status
-        reg.status = "Impact Assessment Complete"
+        # Update case status: auto-close when no company documents are affected
+        no_affected_docs = not assessment.affected_documents
+        reg.status = "Closed" if no_affected_docs else "Impact Assessment Complete"
 
         # Refresh stale/failed upload-time classification so Regulatory Summary
         # is not stuck on an old LLM ImportError after impact succeeds.
@@ -121,7 +122,14 @@ def trigger_impact_assessment(
         from app.core.audit import add_audit_event
         add_audit_event(db, regulation_id, "impact_assessment_completed", "Compliance impact assessment completed successfully.")
         
-        if assessment.affected_documents:
+        if no_affected_docs:
+            add_audit_event(
+                db,
+                regulation_id,
+                "case_closed",
+                "Closed automatically — no company documents affected.",
+            )
+        else:
             doc_names = [d["document_name"] for d in assessment.affected_documents]
             doc_str = ", ".join(doc_names) if doc_names else "None"
             add_audit_event(db, regulation_id, "documents_identified", f"Identified affected documents: {doc_str}.")

@@ -17,6 +17,7 @@ from app.api.v1.schemas.document import DocumentResponse, DocumentVersionRespons
 from app.services.regulation_parser.pdf_parser import extract_text_from_pdf
 from app.services.embeddings.embedding_service import embedding_service
 from app.services.vector_db.qdrant_client import vector_db_client
+from app.services.document_annotations import extract_annotations_from_pdf
 
 router = APIRouter()
 
@@ -415,10 +416,9 @@ def get_document_annotations(
     tenant_id: str = Depends(get_tenant_id)
 ) -> Any:
     """
-    Extract and return PDF annotations for the latest document version.
+    Extract and return unique PDF remediation recommendations for the latest document.
+    Duplicate highlight annotations with identical payloads are merged (pages[]).
     """
-    import fitz
-    import re
     org_id = uuid.UUID(tenant_id)
     document = db.query(Document).filter(
         Document.id == document_id,
@@ -427,50 +427,18 @@ def get_document_annotations(
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    annotations = []
-    if document.file_path and os.path.exists(document.file_path) and document.filename.lower().endswith(".pdf"):
+    if (
+        document.file_path
+        and os.path.exists(document.file_path)
+        and document.filename.lower().endswith(".pdf")
+    ):
         try:
-            doc = fitz.open(document.file_path)
-            for page_idx, page in enumerate(doc):
-                for annot in page.annots():
-                    info = annot.info
-                    content = info.get("content", "")
-                    
-                    section = "N/A"
-                    orig_text = ""
-                    proposed_text = ""
-                    justification = ""
-                    reg_ref = ""
-                    
-                    s_match = re.search(r"Section:\s*(.*?)(?=\nOriginal Text:|\nProposed Text:|\nJustification:|\nRegulation Reference:|$)", content, re.DOTALL)
-                    o_match = re.search(r"Original Text:\s*(.*?)(?=\nProposed Text:|\nJustification:|\nRegulation Reference:|$)", content, re.DOTALL)
-                    p_match = re.search(r"Proposed Text:\s*(.*?)(?=\nJustification:|\nRegulation Reference:|$)", content, re.DOTALL)
-                    j_match = re.search(r"Justification:\s*(.*?)(?=\nRegulation Reference:|$)", content, re.DOTALL)
-                    r_match = re.search(r"Regulation Reference:\s*(.*)", content, re.DOTALL)
-                    
-                    if s_match: section = s_match.group(1).strip()
-                    if o_match: orig_text = o_match.group(1).strip()
-                    if p_match: proposed_text = p_match.group(1).strip()
-                    if j_match: justification = j_match.group(1).strip()
-                    if r_match: reg_ref = r_match.group(1).strip()
-                    
-                    annotations.append({
-                        "id": info.get("id", str(uuid.uuid4())),
-                        "page": page_idx + 1,
-                        "type": annot.type[1],
-                        "title": info.get("title", "AI Remediation"),
-                        "raw_content": content,
-                        "section": section,
-                        "original_text": orig_text,
-                        "proposed_text": proposed_text,
-                        "justification": justification,
-                        "regulation_reference": reg_ref
-                    })
-            doc.close()
+            return extract_annotations_from_pdf(document.file_path)
         except Exception as e:
             logger.error(f"Failed to read PDF annotations: {e}")
-            
-    return annotations
+
+    return []
+
 
 @router.get("/{document_id}/versions/{version_number}/annotations")
 def get_document_version_annotations(
@@ -480,10 +448,9 @@ def get_document_version_annotations(
     tenant_id: str = Depends(get_tenant_id)
 ) -> Any:
     """
-    Extract and return PDF annotations for a specific document version.
+    Extract and return unique PDF remediation recommendations for a document version.
+    Duplicate highlight annotations with identical payloads are merged (pages[]).
     """
-    import fitz
-    import re
     org_id = uuid.UUID(tenant_id)
     document = db.query(Document).filter(
         Document.id == document_id,
@@ -491,7 +458,7 @@ def get_document_version_annotations(
     ).first()
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
-        
+
     version = db.query(DocumentVersion).filter(
         DocumentVersion.document_id == document_id,
         DocumentVersion.version == version_number
@@ -499,47 +466,14 @@ def get_document_version_annotations(
     if not version:
         raise HTTPException(status_code=404, detail="Version not found")
 
-    annotations = []
-    if version.file_path and os.path.exists(version.file_path) and version.filename.lower().endswith(".pdf"):
+    if (
+        version.file_path
+        and os.path.exists(version.file_path)
+        and version.filename.lower().endswith(".pdf")
+    ):
         try:
-            doc = fitz.open(version.file_path)
-            for page_idx, page in enumerate(doc):
-                for annot in page.annots():
-                    info = annot.info
-                    content = info.get("content", "")
-                    
-                    section = "N/A"
-                    orig_text = ""
-                    proposed_text = ""
-                    justification = ""
-                    reg_ref = ""
-                    
-                    s_match = re.search(r"Section:\s*(.*?)(?=\nOriginal Text:|\nProposed Text:|\nJustification:|\nRegulation Reference:|$)", content, re.DOTALL)
-                    o_match = re.search(r"Original Text:\s*(.*?)(?=\nProposed Text:|\nJustification:|\nRegulation Reference:|$)", content, re.DOTALL)
-                    p_match = re.search(r"Proposed Text:\s*(.*?)(?=\nJustification:|\nRegulation Reference:|$)", content, re.DOTALL)
-                    j_match = re.search(r"Justification:\s*(.*?)(?=\nRegulation Reference:|$)", content, re.DOTALL)
-                    r_match = re.search(r"Regulation Reference:\s*(.*)", content, re.DOTALL)
-                    
-                    if s_match: section = s_match.group(1).strip()
-                    if o_match: orig_text = o_match.group(1).strip()
-                    if p_match: proposed_text = p_match.group(1).strip()
-                    if j_match: justification = j_match.group(1).strip()
-                    if r_match: reg_ref = r_match.group(1).strip()
-                    
-                    annotations.append({
-                        "id": info.get("id", str(uuid.uuid4())),
-                        "page": page_idx + 1,
-                        "type": annot.type[1],
-                        "title": info.get("title", "AI Remediation"),
-                        "raw_content": content,
-                        "section": section,
-                        "original_text": orig_text,
-                        "proposed_text": proposed_text,
-                        "justification": justification,
-                        "regulation_reference": reg_ref
-                    })
-            doc.close()
+            return extract_annotations_from_pdf(version.file_path)
         except Exception as e:
             logger.error(f"Failed to read PDF annotations: {e}")
-            
-    return annotations
+
+    return []

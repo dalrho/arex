@@ -179,3 +179,111 @@ def test_pdf_remediation():
         assert "Regulation Reference: 21 CFR Part 11" in info["content"]
         
         pdf_doc.close()
+
+
+def test_pdf_multiline_replace_creates_one_annotation():
+    """Multi-line replace must produce one content-bearing annot, not one per line/rect."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        pdf_path = os.path.join(tmpdir, "multi.pdf")
+        new_pdf_path = os.path.join(tmpdir, "multi_v2.pdf")
+
+        doc = SimpleDocTemplate(pdf_path, pagesize=letter)
+        styles = getSampleStyleSheet()
+        story = [
+            Paragraph("1.0 CAPA Procedure", styles["Heading1"]),
+            Paragraph("Line alpha requires update for compliance.", styles["Normal"]),
+            Paragraph("Line beta requires update for compliance.", styles["Normal"]),
+            Paragraph("Line gamma requires update for compliance.", styles["Normal"]),
+            Paragraph("Unchanged trailing paragraph stays put.", styles["Normal"]),
+        ]
+        doc.build(story)
+
+        original_text = (
+            "1.0 CAPA Procedure\n"
+            "Line alpha requires update for compliance.\n"
+            "Line beta requires update for compliance.\n"
+            "Line gamma requires update for compliance.\n"
+            "Unchanged trailing paragraph stays put."
+        )
+        proposed_text = (
+            "1.0 CAPA Procedure\n"
+            "Line alpha has been revised for compliance.\n"
+            "Line beta has been revised for compliance.\n"
+            "Line gamma has been revised for compliance.\n"
+            "Unchanged trailing paragraph stays put."
+        )
+
+        apply_remediation(
+            original_file_path=pdf_path,
+            new_file_path=new_pdf_path,
+            proposed_text=proposed_text,
+            diff_content={"current_content": original_text},
+            justification="CAPA alignment",
+            regulation_reference="21 CFR 820",
+        )
+
+        pdf_doc = fitz.open(new_pdf_path)
+        page = pdf_doc[0]
+        annots = list(page.annots() or [])
+        # One logical remediation action → one annotation (multi-quad OK)
+        assert len(annots) == 1
+        content = annots[0].info["content"]
+        assert "Line alpha requires update for compliance." in content
+        assert "Line beta requires update for compliance." in content
+        assert "Line gamma requires update for compliance." in content
+        assert "Line alpha has been revised for compliance." in content
+        pdf_doc.close()
+
+
+def test_pdf_repeated_boilerplate_does_not_fan_out():
+    """Repeated identical lines must not create one annotation per occurrence."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        pdf_path = os.path.join(tmpdir, "boilerplate.pdf")
+        new_pdf_path = os.path.join(tmpdir, "boilerplate_v2.pdf")
+
+        repeated = "CONFIDENTIAL - Do not distribute without approval."
+        doc = SimpleDocTemplate(pdf_path, pagesize=letter)
+        styles = getSampleStyleSheet()
+        story = [
+            Paragraph("2.0 Document Control", styles["Heading1"]),
+            Paragraph(repeated, styles["Normal"]),
+            Paragraph("Unique body paragraph that will change.", styles["Normal"]),
+            Paragraph(repeated, styles["Normal"]),
+            Paragraph(repeated, styles["Normal"]),
+        ]
+        doc.build(story)
+
+        original_text = (
+            f"2.0 Document Control\n"
+            f"{repeated}\n"
+            f"Unique body paragraph that will change.\n"
+            f"{repeated}\n"
+            f"{repeated}"
+        )
+        proposed_text = (
+            f"2.0 Document Control\n"
+            f"{repeated}\n"
+            f"Unique body paragraph that was revised.\n"
+            f"{repeated}\n"
+            f"{repeated}"
+        )
+
+        apply_remediation(
+            original_file_path=pdf_path,
+            new_file_path=new_pdf_path,
+            proposed_text=proposed_text,
+            diff_content={"current_content": original_text},
+            justification="Body update only",
+            regulation_reference="ISO 13485",
+        )
+
+        pdf_doc = fitz.open(new_pdf_path)
+        all_annots = []
+        for page in pdf_doc:
+            page_annots = list(page.annots() or [])
+            all_annots.extend(page_annots)
+        # Only the unique body change should produce a recommendation annot
+        assert len(all_annots) == 1
+        assert "Unique body paragraph that will change." in all_annots[0].info["content"]
+        assert "Unique body paragraph that was revised." in all_annots[0].info["content"]
+        pdf_doc.close()

@@ -17,6 +17,11 @@ class ImpactResponse(BaseModel):
 
     @computed_field
     @property
+    def affected_documents_count(self) -> int:
+        return len(self.affected_documents or [])
+
+    @computed_field
+    @property
     def provider(self) -> str:
         from app.core.config import settings
         return settings.active_provider

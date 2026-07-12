@@ -73,6 +73,7 @@ export interface ImpactResponse {
   status: string;
   created_at: string;
   affected_documents?: AffectedDocument[];
+  affected_documents_count?: number;
 }
 
 export interface DiffContent {
@@ -179,6 +180,7 @@ export interface DocumentVersionResponse {
 export interface DocumentAnnotationResponse {
   id: string;
   page: number;
+  pages?: number[];
   type: string;
   title: string;
   raw_content: string;

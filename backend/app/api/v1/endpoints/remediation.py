@@ -257,6 +257,12 @@ def trigger_remediation_drafts(
             detail="Impact Assessment has not been completed. You must run the Impact Assessment before generating remediation drafts."
         )
 
+    if reg.status == "Closed" or not assessment.affected_documents:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Remediation drafts are not applicable — no company documents are affected by this regulation.",
+        )
+
     # Determine matched document IDs
     if payload and payload.document_ids:
         matched_doc_ids = payload.document_ids
