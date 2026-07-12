@@ -472,7 +472,7 @@ If you want to run the code natively on your local machine:
 
 ---
 
-## 8. Feature Status (Implemented vs. Future Work)
+## 8. Feature Status
 
 ### Implemented Features
 * **Dual Inference & Embeddings Engines**: Supports both Google Gemini (Developer Mode) and Fireworks AI (Hackathon Mode - AMD GPU infrastructure).
