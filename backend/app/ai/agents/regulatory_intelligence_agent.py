@@ -4,6 +4,7 @@ from typing import Dict, Any
 
 from app.ai.llm_client import llm_client
 from app.api.v1.schemas.regulation import RegulatoryIntelligenceOutput
+from app.core.exceptions import LLMConfigurationError
 
 logger = logging.getLogger("arex.regulatory-intelligence-agent")
 
@@ -68,6 +69,8 @@ def run_regulatory_intelligence(state: Dict[str, Any]) -> Dict[str, Any]:
             "affected_business_areas": result.affected_business_areas,
             "rationale": result.rationale
         }
+    except LLMConfigurationError:
+        raise
     except Exception as e:
         logger.error(f"LLM call failed or parsed invalid response schema: {e}. Falling back to default.")
         # Safe fallback

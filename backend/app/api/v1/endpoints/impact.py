@@ -94,3 +94,21 @@ def trigger_impact_assessment(
             detail=f"Compliance impact assessment failed: {str(e)}"
         )
 
+from app.services.compliance_impact.impact_engine import get_matched_documents
+
+@router.get("/regulation/{regulation_id}/pre_scan", response_model=List[Any])
+def trigger_pre_scan(
+    regulation_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_tenant_id)
+) -> Any:
+    """
+    Perform a fast vector database pre-scan to find matching documents for the regulation.
+    """
+    org_id = uuid.UUID(tenant_id)
+    return get_matched_documents(
+        regulation_id=regulation_id,
+        organization_id=org_id,
+        db=db
+    )
+

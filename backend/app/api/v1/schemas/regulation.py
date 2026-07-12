@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, computed_field
 
 class RegulationResponse(BaseModel):
     id: uuid.UUID
@@ -28,6 +28,18 @@ class RegulationResponse(BaseModel):
     urgency: Optional[str] = None
     affected_business_areas: Optional[List[str]] = None
     rationale: Optional[str] = None
+
+    @computed_field
+    @property
+    def provider(self) -> str:
+        from app.core.config import settings
+        return settings.active_provider
+
+    @computed_field
+    @property
+    def model(self) -> str:
+        from app.core.config import settings
+        return settings.active_model_formatted
 
     class Config:
         from_attributes = True

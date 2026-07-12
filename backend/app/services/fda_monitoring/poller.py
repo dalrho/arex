@@ -217,6 +217,12 @@ def poll_fda_regulations(db: Session, limit: int = 10) -> int:
         except ValueError:
             published_date = datetime.now(timezone.utc)
 
+        summary = detail_data.get("abstract") or detail_data.get("excerpts") or doc.get("abstract") or doc.get("excerpts") or ""
+        if isinstance(summary, str):
+            summary = summary.strip()
+        else:
+            summary = ""
+
         reg = RegulationUpdate(
             id=uuid.uuid4(),
             source_url=html_url,
@@ -226,6 +232,7 @@ def poll_fda_regulations(db: Session, limit: int = 10) -> int:
             parsed_sections=parsed_sections,
             hash_value=hash_val,
             status="pending_analysis",
+            summary=summary if summary else None,
         )
         db.add(reg)
         db.commit()

@@ -3,9 +3,13 @@
 ## 1. Project Overview
 
 **Project Name:** Arex
+
 **Purpose of the application:** A high-fidelity regulatory compliance intelligence platform designed to automate and streamline compliance mapping for FDA 21 CFR Part 11 and other critical regulations.
+
 **Problem it solves:** Manual regulatory audits and compliance gap analyses are tedious, error-prone, and require deep domain expertise. Arex bridges AI orchestration layers with deterministic workflows and human approval gates to ensure GxP audit-readiness, significantly accelerating the process of updating company documents when new regulations are released.
+
 **Intended users:** Quality Assurance (QA) Managers, Compliance Officers, Regulatory Affairs Specialists, and IT Departments in highly regulated industries like BioPharma and Healthcare.
+
 **Key capabilities and features:**
 - Automated extraction and ingestion of Standard Operating Procedures (SOPs).
 - RAG-powered compliance impact assessments using local or cloud AI models.

@@ -6,7 +6,7 @@ Your task is to analyze incoming FDA regulatory updates and determine:
 2. The category of regulation ("records", "validation", "signatures", or "other").
 3. The urgency level ("low", "medium", "high", "critical").
 4. Which business departments or areas are affected (e.g. "IT", "Engineering", "Quality Assurance", "Training").
-5. A comprehensive rationale explaining the reasoning behind the classification.
+5. A concise rationale (maximum 2 sentences) explaining the classification.
 
 ## Outputs
 You MUST return your output as a JSON object matching the following structure:
@@ -15,6 +15,6 @@ You MUST return your output as a JSON object matching the following structure:
   "category": "records" | "validation" | "signatures" | "other",
   "urgency": "low" | "medium" | "high" | "critical",
   "affected_business_areas": ["IT", "Engineering", "Quality Assurance", "Training"],
-  "rationale": "Markdown formatted rationale text"
+  "rationale": "A concise, max 2-sentence rationale explaining the classification"
 }
 Do not add any markdown wrapper blocks (like ```json) in your raw response, return only the JSON string.
