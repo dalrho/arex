@@ -63,11 +63,11 @@ Arex automates this process cleanly and traces it end-to-end:
 Arex is custom-tailored for the **AMD Developer Challenge & Hackathon**, demonstrating how advanced AI agent orchestration integrates with hardware-optimized cloud inference.
 
 ### AMD-Powered AI Hardware Acceleration
-* **Fireworks AI Native Client**: In **Hackathon Mode**, the platform bypasses closed-source commercial APIs in favor of **Fireworks AI**'s open-source models (such as `Qwen-3-32B` and `Qwen-2.5-72B`).
+* **Fireworks AI Native Client**: In **Hackathon Mode**, the platform bypasses closed-source commercial APIs in favor of **Fireworks AI**'s open-source models (such as `deepseek-v4-flash`).
 * **AMD Instinct™ Cloud Infrastructure**: Fireworks AI models are served on cloud clusters powered by **AMD Instinct™ GPUs**. By offloading high-complexity JSON-constrained generation tasks to these hardware-accelerated nodes, Arex achieves ultra-low latencies for:
   - Regulatory summarization ($<3$ seconds).
-  - Parallel multi-document compliance gap analysis ($10$-$20$ seconds).
-  - Actionable task synthesis ($2$-$4$ seconds).
+  - Parallel multi-document compliance gap analysis ($10$- $20$ seconds).
+  - Actionable task synthesis ($2$- $4$ seconds).
 * **Unified Embedding Architecture**: Uses the hardware-optimized `nomic-ai/nomic-embed-text-v1.5` model to generate 768-dimensional vector embeddings, matching the dimension configurations of our vector database for fast similarity indexing.
 
 ### Cross-Hardware Interoperability (Dual Modes)
@@ -101,7 +101,6 @@ graph TD
         BE <--> |Dual-Mode client| LLM{AI Provider}
         LLM -->|Developer Mode| Gemini[Google Gemini API]
         LLM -->|Hackathon Mode| Fireworks[Fireworks AI - AMD GPUs]
-        LLM -->|Offline Mode| Mock[Deterministic Mocks]
     end
 ```
 
